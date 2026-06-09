@@ -1,12 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { useRouter } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { logIncident } from "@/lib/incident";
-import { ArrowLeft, ChevronLeft, ChevronRight, Lock, Plus, Trash2, X } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, Lock, Plus, Trash2, X, Calendar as CalendarIcon, Link2, Image as ImageIcon, ExternalLink } from "lucide-react";
 import { MobileShell } from "@/components/MobileShell";
 import { ARTS, ME, type Art } from "@/lib/mock-data";
-import { actions, computeStreak, lastTrainingDate, localDayKey, useStore } from "@/lib/store";
+import { actions, computeStreak, lastTrainingDate, localDayKey, useStore, type ScheduleSlot } from "@/lib/store";
 import type { TrainingSession } from "@/lib/mock-data";
 import { useUser } from "@/lib/auth";
 
