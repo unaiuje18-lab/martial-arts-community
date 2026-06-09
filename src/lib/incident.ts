@@ -16,7 +16,12 @@ export interface IncidentRecord {
 
 const MAX = 25;
 const recent: IncidentRecord[] = [];
+let snapshot: IncidentRecord[] = [];
 const listeners = new Set<() => void>();
+
+function refreshSnapshot() {
+  snapshot = recent.slice();
+}
 
 function newId(): string {
   // Short, human-quotable id. INC-XXXXXX
@@ -46,6 +51,7 @@ export function logIncident(
   };
   recent.unshift(record);
   if (recent.length > MAX) recent.length = MAX;
+  refreshSnapshot();
   if (typeof console !== "undefined") {
     console.error(`[${record.id}]`, err, { ...context, metrics: record.metrics });
   }
@@ -54,7 +60,7 @@ export function logIncident(
 }
 
 export function getRecentIncidents(): IncidentRecord[] {
-  return [...recent];
+  return snapshot;
 }
 
 export function subscribeIncidents(l: () => void): () => void {
@@ -66,5 +72,6 @@ export function subscribeIncidents(l: () => void): () => void {
 
 export function clearIncidents() {
   recent.length = 0;
+  refreshSnapshot();
   listeners.forEach((l) => l());
 }
