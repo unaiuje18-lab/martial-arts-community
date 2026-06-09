@@ -657,6 +657,51 @@ function AddSessionSheet({ onClose, initialDate }: { onClose: () => void; initia
               className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-1 focus:ring-accent resize-none"
             />
           </Field>
+          <Field label="Custom activity (optional)">
+            <input
+              value={activity}
+              onChange={(e) => setActivity(e.target.value)}
+              placeholder="Running, Swimming, Yoga…"
+              maxLength={40}
+              className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-1 focus:ring-accent"
+            />
+          </Field>
+          <Field label="Strava link (optional)">
+            <div className="relative">
+              <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <input
+                value={stravaUrl}
+                onChange={(e) => setStravaUrl(e.target.value)}
+                placeholder="https://www.strava.com/activities/…"
+                inputMode="url"
+                className="w-full bg-secondary rounded-lg pl-9 pr-3 py-2.5 text-sm outline-none focus:ring-1 focus:ring-accent"
+              />
+            </div>
+          </Field>
+          <Field label="Photo (optional)">
+            <input ref={photoRef} type="file" accept="image/*" onChange={onPickPhoto} className="hidden" />
+            {photoUrl ? (
+              <div className="relative">
+                <img src={photoUrl} alt="Session" className="w-full h-40 object-cover rounded-lg" />
+                <button
+                  type="button"
+                  onClick={() => setPhotoUrl(undefined)}
+                  className="absolute top-2 right-2 size-7 rounded-full bg-black/60 text-white flex items-center justify-center"
+                  aria-label="Remove photo"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => photoRef.current?.click()}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-lg border border-dashed border-border text-xs font-mono uppercase tracking-wider text-muted-foreground"
+              >
+                <ImageIcon className="size-4" /> Add photo (max 3MB)
+              </button>
+            )}
+          </Field>
           <button
             onClick={save}
             className="w-full py-3 rounded-xl bg-accent text-accent-foreground font-bold uppercase tracking-wide active:scale-[0.98] transition-transform"
