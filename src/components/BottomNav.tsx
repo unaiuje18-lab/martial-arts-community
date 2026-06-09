@@ -1,10 +1,9 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Home, Search, Swords, Plus, User } from "lucide-react";
-import type { ComponentType } from "react";
+import { Home, Search, Swords, Plus, User, type LucideIcon } from "lucide-react";
 
 type NavItem = {
   to: "/" | "/search" | "/duels" | "/create" | "/profile";
-  icon: ComponentType<{ className?: string }>;
+  icon: LucideIcon;
   label: string;
 };
 
