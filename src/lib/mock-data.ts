@@ -160,6 +160,7 @@ export interface TrainingSession {
   activity?: string; // free-form label e.g. "Running", overrides `art` for display
   stravaUrl?: string;
   photoUrl?: string; // data URL or remote URL
+  photoThumb?: string; // small (~240px) data URL for list rendering
 }
 
 const today = new Date();

@@ -8,6 +8,7 @@ import { MobileShell } from "@/components/MobileShell";
 import { ARTS, ME, type Art } from "@/lib/mock-data";
 import { actions, computeStreak, lastTrainingDate, localDayKey, useStore, type ScheduleSlot } from "@/lib/store";
 import type { TrainingSession } from "@/lib/mock-data";
+import { processImage, ImageValidationError } from "@/lib/image";
 import { useUser } from "@/lib/auth";
 
 export const Route = createFileRoute("/_authenticated/tracker")({
@@ -411,7 +412,15 @@ function TrackerPage() {
                     {(s.stravaUrl || s.photoUrl) && (
                       <div className="flex items-center gap-2 mt-2">
                         {s.photoUrl && (
-                          <img src={s.photoUrl} alt="" className="size-12 rounded-md object-cover border border-border" />
+                          <img
+                            src={s.photoThumb ?? s.photoUrl}
+                            alt=""
+                            loading="lazy"
+                            decoding="async"
+                            width={48}
+                            height={48}
+                            className="size-12 rounded-md object-cover border border-border"
+                          />
                         )}
                         {s.stravaUrl && (
                           <a
@@ -558,15 +567,27 @@ function AddSessionSheet({ onClose, initialDate }: { onClose: () => void; initia
   const [activity, setActivity] = useState("");
   const [stravaUrl, setStravaUrl] = useState("");
   const [photoUrl, setPhotoUrl] = useState<string | undefined>(undefined);
+  const [photoThumb, setPhotoThumb] = useState<string | undefined>(undefined);
+  const [photoMeta, setPhotoMeta] = useState<{ w: number; h: number; kb: number } | null>(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
   const photoRef = useRef<HTMLInputElement>(null);
 
-  const onPickPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onPickPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file after an error
     if (!f) return;
-    if (f.size > 3 * 1024 * 1024) { toast.error("Image too large (max 3MB)"); return; }
-    const reader = new FileReader();
-    reader.onload = () => setPhotoUrl(reader.result as string);
-    reader.readAsDataURL(f);
+    setPhotoBusy(true);
+    try {
+      const out = await processImage(f);
+      setPhotoUrl(out.full);
+      setPhotoThumb(out.thumb);
+      setPhotoMeta({ w: out.width, h: out.height, kb: Math.round(out.bytes / 1024) });
+    } catch (err) {
+      const msg = err instanceof ImageValidationError ? err.message : "Could not process image";
+      toast.error(msg);
+    } finally {
+      setPhotoBusy(false);
+    }
   };
 
   const save = () => {
@@ -585,6 +606,7 @@ function AddSessionSheet({ onClose, initialDate }: { onClose: () => void; initia
       activity: activity.trim() || undefined,
       stravaUrl: url || undefined,
       photoUrl,
+      photoThumb,
     });
     onClose();
   };
@@ -697,26 +719,45 @@ function AddSessionSheet({ onClose, initialDate }: { onClose: () => void; initia
             </div>
           </Field>
           <Field label="Photo (optional)">
-            <input ref={photoRef} type="file" accept="image/*" onChange={onPickPhoto} className="hidden" />
+            <input
+              ref={photoRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={onPickPhoto}
+              className="hidden"
+            />
             {photoUrl ? (
               <div className="relative">
-                <img src={photoUrl} alt="Session" className="w-full h-40 object-cover rounded-lg" />
+                <img
+                  src={photoThumb ?? photoUrl}
+                  alt="Session"
+                  loading="lazy"
+                  decoding="async"
+                  className="w-full h-40 object-cover rounded-lg"
+                />
                 <button
                   type="button"
-                  onClick={() => setPhotoUrl(undefined)}
+                  onClick={() => { setPhotoUrl(undefined); setPhotoThumb(undefined); setPhotoMeta(null); }}
                   className="absolute top-2 right-2 size-7 rounded-full bg-black/60 text-white flex items-center justify-center"
                   aria-label="Remove photo"
                 >
                   <X className="size-3.5" />
                 </button>
+                {photoMeta && (
+                  <p className="mt-1.5 text-[10px] font-mono text-muted-foreground uppercase tracking-wider">
+                    {photoMeta.w}×{photoMeta.h} · {photoMeta.kb} KB · optimised
+                  </p>
+                )}
               </div>
             ) : (
               <button
                 type="button"
                 onClick={() => photoRef.current?.click()}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-lg border border-dashed border-border text-xs font-mono uppercase tracking-wider text-muted-foreground"
+                disabled={photoBusy}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-lg border border-dashed border-border text-xs font-mono uppercase tracking-wider text-muted-foreground disabled:opacity-50"
               >
-                <ImageIcon className="size-4" /> Add photo (max 3MB)
+                <ImageIcon className="size-4" />
+                {photoBusy ? "Optimising…" : "Add photo · JPG/PNG/WEBP · max 8MB"}
               </button>
             )}
           </Field>
