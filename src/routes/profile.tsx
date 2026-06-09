@@ -386,25 +386,51 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
           </span>
           <div className="space-y-3">
             {arts.map((a) => {
-              const belts = BELTS[a];
-              const current = ranks[a]?.value ?? "";
+              const systems = BELT_SYSTEMS[a];
+              const rank = ranks[a];
+              const current = rank?.value ?? "";
+              const sysId = rank?.system ?? systems?.[0]?.id;
+              const activeSystem = systems?.find((s) => s.id === sysId) ?? systems?.[0];
               return (
                 <div key={a} className="bg-card border border-border rounded-xl p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-bold uppercase tracking-wide">{a}</p>
                     <p className="text-[9px] font-mono text-muted-foreground uppercase">
-                      {belts ? "Belt" : "Years experience"}
+                      {systems ? "Belt system" : "Years experience"}
                     </p>
                   </div>
-                  {belts ? (
+
+                  {systems && systems.length > 1 && (
+                    <div className="flex gap-1.5">
+                      {systems.map((s) => {
+                        const sel = (sysId ?? systems[0].id) === s.id;
+                        return (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => setRankSystem(a, s.id)}
+                            className={`flex-1 px-2 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wide border transition-colors ${
+                              sel
+                                ? "bg-primary/20 text-foreground border-primary/50"
+                                : "bg-secondary border-border text-muted-foreground"
+                            }`}
+                          >
+                            {s.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {activeSystem ? (
                     <div className="flex flex-wrap gap-1.5">
-                      {belts.map((b) => {
+                      {activeSystem.belts.map((b) => {
                         const sel = current === b;
                         return (
                           <button
                             key={b}
                             type="button"
-                            onClick={() => setRankValue(a, sel ? "" : b)}
+                            onClick={() => setRankValue(a, sel ? "" : b, activeSystem.id)}
                             className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border transition-colors ${
                               sel
                                 ? "bg-accent text-accent-foreground border-accent"
