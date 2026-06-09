@@ -6,7 +6,8 @@ import { logIncident } from "@/lib/incident";
 import { ArrowLeft, ChevronLeft, ChevronRight, Lock, Plus, Trash2, X } from "lucide-react";
 import { MobileShell } from "@/components/MobileShell";
 import { ARTS, ME, type Art } from "@/lib/mock-data";
-import { actions, computeStreak, useStore } from "@/lib/store";
+import { actions, computeStreak, lastTrainingDate, localDayKey, useStore } from "@/lib/store";
+import type { TrainingSession } from "@/lib/mock-data";
 import { useUser } from "@/lib/auth";
 
 export const Route = createFileRoute("/_authenticated/tracker")({
@@ -198,6 +199,8 @@ function TrackerPage() {
           <Recap label="Avg Effort" value={`${avgEffort}/10`} />
           <Recap label="Top Art" value={topArt} />
         </section>
+
+        <StreakCard sessions={sessions} streak={streak} />
 
         <section className="space-y-3">
           <div className="flex items-center justify-between">
@@ -463,6 +466,52 @@ function Recap({ label, value, accent }: { label: string; value: string; accent?
         {value}
       </p>
     </div>
+  );
+}
+
+function StreakCard({ sessions, streak }: { sessions: TrainingSession[]; streak: number }) {
+  const last = lastTrainingDate(sessions);
+  const todayKey = localDayKey(new Date());
+  const yest = new Date();
+  yest.setDate(yest.getDate() - 1);
+  const yKey = localDayKey(yest);
+  const trainedToday = last === todayKey;
+  const status = !last
+    ? "No training yet — log your first session."
+    : trainedToday
+      ? "Trained today · streak is live"
+      : last === yKey
+        ? "Trained yesterday · train today to keep it"
+        : "Streak reset — train today to start again";
+  const lastLabel = last
+    ? new Date(last).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })
+    : "—";
+  return (
+    <section className="rounded-2xl border border-accent/30 bg-gradient-to-br from-accent/10 via-card to-card p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="font-display text-xl uppercase italic tracking-tight">Streak</h2>
+        <span
+          className={`text-[10px] font-mono uppercase tracking-widest ${
+            trainedToday ? "text-accent" : "text-muted-foreground"
+          }`}
+        >
+          {trainedToday ? "● live" : "○ pending"}
+        </span>
+      </div>
+      <div className="flex items-baseline gap-2">
+        <span className="font-display text-5xl tracking-tight text-accent leading-none">
+          {streak}
+        </span>
+        <span className="text-sm text-muted-foreground">
+          {streak === 1 ? "day in a row" : "days in a row"}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-3 pt-1">
+        <MiniStat label="Last session" value={lastLabel} />
+        <MiniStat label="Today" value={trainedToday ? "Done" : "Pending"} />
+      </div>
+      <p className="text-[11px] text-muted-foreground">{status}</p>
+    </section>
   );
 }
 

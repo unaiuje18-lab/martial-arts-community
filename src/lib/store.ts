@@ -362,14 +362,47 @@ export const actions = {
   },
 };
 
-// streak: count consecutive days ending today with at least one session
+// Local-timezone YYYY-MM-DD. Avoids UTC drift that would break streaks
+// for users training late at night in negative offsets.
+export function localDayKey(input: string | Date): string {
+  const d = typeof input === "string" ? new Date(input) : input;
+  if (Number.isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+// streak: consecutive days (local TZ) ending today or yesterday with at
+// least one COMPLETED session. If the most recent completed session is
+// older than yesterday the streak is 0 — it doesn't advance without training.
 export function computeStreak(sessions: TrainingSession[]): number {
-  const days = new Set(sessions.map((s) => s.date.slice(0, 10)));
+  const days = new Set(
+    sessions.filter((s) => s.completed).map((s) => localDayKey(s.date)),
+  );
+  if (days.size === 0) return 0;
+  const today = new Date();
+  const todayKey = localDayKey(today);
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayKey = localDayKey(yesterday);
+  // Anchor must be today (preferred) or yesterday; otherwise streak is broken.
+  let cursor: Date;
+  if (days.has(todayKey)) cursor = today;
+  else if (days.has(yesterdayKey)) cursor = yesterday;
+  else return 0;
   let streak = 0;
-  const d = new Date();
-  while (days.has(d.toISOString().slice(0, 10))) {
+  while (days.has(localDayKey(cursor))) {
     streak++;
-    d.setDate(d.getDate() - 1);
+    cursor.setDate(cursor.getDate() - 1);
   }
   return streak;
+}
+
+export function lastTrainingDate(sessions: TrainingSession[]): string | null {
+  const done = sessions.filter((s) => s.completed);
+  if (!done.length) return null;
+  return done
+    .map((s) => localDayKey(s.date))
+    .sort((a, b) => b.localeCompare(a))[0];
 }
