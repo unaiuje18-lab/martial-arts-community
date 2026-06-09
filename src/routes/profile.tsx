@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState, useRef } from "react";
 import { Lock, Flame, Award, Pencil, X, Check, Camera } from "lucide-react";
 import { MobileShell } from "@/components/MobileShell";
-import { ME, BADGES, SESSIONS, formatCount, ARTS, LEVELS, CONTENT_PREFS, BELTS, hasBelts, type Art } from "@/lib/mock-data";
+import { ME, BADGES, SESSIONS, formatCount, ARTS, LEVELS, CONTENT_PREFS, BELT_SYSTEMS, hasBelts, type Art } from "@/lib/mock-data";
 import { auth, useUser } from "@/lib/auth";
 import {
   Sheet,
