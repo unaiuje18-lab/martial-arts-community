@@ -1,12 +1,36 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { Heart, MessageCircle, Bookmark, Share2, Volume2, VolumeX, Play, X, Send, RefreshCw, AlertTriangle, Inbox } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { Heart, MessageCircle, Bookmark, Share2, Volume2, VolumeX, Play, X, Send, RefreshCw, AlertTriangle, Inbox, WifiOff, Wifi } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { MobileShell } from "@/components/MobileShell";
 import { FEED, formatCount, type FeedPost } from "@/lib/mock-data";
-import { actions, useStore, fetchBackendFeed, applyBackendFeed } from "@/lib/store";
+import { actions, useStore, fetchBackendFeed, applyBackendFeed, type BackendFeed } from "@/lib/store";
 import { Skeleton } from "@/components/ui/skeleton";
 import { reportLovableError } from "@/lib/lovable-error-reporting";
+import { measureQuery } from "@/lib/metrics";
+import { useOnlineStatus } from "@/hooks/use-online-status";
+
+const FEED_CACHE_KEY = "strive:feed-cache:v1";
+
+function readFeedCache(): BackendFeed | undefined {
+  if (typeof window === "undefined") return undefined;
+  try {
+    const raw = localStorage.getItem(FEED_CACHE_KEY);
+    if (!raw) return undefined;
+    return JSON.parse(raw) as BackendFeed;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeFeedCache(data: BackendFeed) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(FEED_CACHE_KEY, JSON.stringify(data));
+  } catch {
+    /* quota — ignore */
+  }
+}
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -20,16 +44,29 @@ export const Route = createFileRoute("/")({
 
 function FeedPage() {
   const userPosts = useStore((s) => s.userPosts);
+  const queryClient = useQueryClient();
+  const { online, justReconnected } = useOnlineStatus();
+
   const hydration = useQuery({
     queryKey: ["feed", "hydration"],
     queryFn: async () => {
-      const data = await fetchBackendFeed();
+      const data = await measureQuery("feed.hydration", () => fetchBackendFeed());
       applyBackendFeed(data);
+      writeFeedCache(data);
       return data;
     },
     // Critical query: aggressive retry with exponential backoff via QueryClient
     // defaults. Keep cached for a minute so back-nav is instant.
     staleTime: 60_000,
+    // Offline-first: seed from persistent cache so the feed renders instantly.
+    initialData: () => {
+      const cached = readFeedCache();
+      if (cached) applyBackendFeed(cached);
+      return cached;
+    },
+    // Don't keep hammering the network when offline.
+    enabled: online,
+    networkMode: "offlineFirst",
   });
 
   useEffect(() => {
@@ -37,6 +74,13 @@ function FeedPage() {
       reportLovableError(hydration.error, { source: "feed_hydration" }, { handled: true });
     }
   }, [hydration.error]);
+
+  // Auto-refetch when the connection comes back.
+  useEffect(() => {
+    if (justReconnected) {
+      queryClient.invalidateQueries({ queryKey: ["feed", "hydration"] });
+    }
+  }, [justReconnected, queryClient]);
 
   const feed = [...userPosts, ...FEED];
   const [muted, setMuted] = useState(true);
@@ -79,6 +123,7 @@ function FeedPage() {
   if (isEmpty) {
     return (
       <MobileShell fullBleed>
+        <ConnectionBanner online={online} justReconnected={justReconnected} />
         <FeedEmpty onRetry={() => hydration.refetch()} />
       </MobileShell>
     );
@@ -86,6 +131,7 @@ function FeedPage() {
 
   return (
     <MobileShell fullBleed>
+      <ConnectionBanner online={online} justReconnected={justReconnected} />
       {hasError && (
         <FeedErrorBanner
           error={hydration.error as Error}
