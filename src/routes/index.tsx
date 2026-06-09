@@ -164,6 +164,31 @@ function FeedPage() {
 }
 
 function FeedSkeleton() {
+  return null as never; /* replaced below */
+}
+
+function _Reserved() { return null; }
+
+function ConnectionBanner({ online, justReconnected }: { online: boolean; justReconnected: boolean }) {
+  if (online && !justReconnected) return null;
+  const isOffline = !online;
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className={`absolute top-[max(0.75rem,env(safe-area-inset-top))] left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide backdrop-blur-md shadow-lg ${
+        isOffline
+          ? "bg-zinc-900/90 text-white border border-white/15"
+          : "bg-emerald-600/90 text-white"
+      }`}
+    >
+      {isOffline ? <WifiOff className="size-3.5" /> : <Wifi className="size-3.5" />}
+      {isOffline ? "Offline · cached feed" : "Back online"}
+    </div>
+  );
+}
+
+function FeedSkeletonReal() {
   return (
     <div className="h-[100dvh] w-full bg-black relative overflow-hidden">
       <Skeleton className="absolute inset-0 rounded-none bg-white/5" />
