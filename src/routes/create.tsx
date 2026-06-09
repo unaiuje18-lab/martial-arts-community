@@ -271,89 +271,204 @@ function MobilePreviewFrame({ children }: { children: React.ReactNode }) {
 function UploadVideoForm({ onClose }: { onClose: () => void }) {
   const user = useUser();
   const [videoUrl, setVideoUrl] = useState("");
+  const [videoName, setVideoName] = useState("");
+  const [videoSizeMb, setVideoSizeMb] = useState(0);
   const [posterUrl, setPosterUrl] = useState("");
   const [caption, setCaption] = useState("");
   const [art, setArt] = useState<Art | null>(null);
   const [level, setLevel] = useState<(typeof LEVELS)[number] | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [busy, setBusy] = useState(false);
   const videoFileRef = useRef<HTMLInputElement>(null);
   const posterFileRef = useRef<HTMLInputElement>(null);
 
-  const pickFile = (
-    e: React.ChangeEvent<HTMLInputElement>,
-    set: (url: string) => void,
-  ) => {
-    const f = e.target.files?.[0];
+  const handleVideoFile = async (f: File | null | undefined) => {
     if (!f) return;
-    set(URL.createObjectURL(f));
+    if (!f.type.startsWith("video/")) {
+      toast.error("That file is not a video");
+      return;
+    }
+    const mb = f.size / (1024 * 1024);
+    if (mb > MAX_VIDEO_MB) {
+      toast.error(`Video too large (${mb.toFixed(1)}MB). Max ${MAX_VIDEO_MB}MB for local saving.`);
+      return;
+    }
+    setBusy(true);
+    try {
+      const dataUrl = await fileToDataUrl(f);
+      setVideoUrl(dataUrl);
+      setVideoName(f.name);
+      setVideoSizeMb(mb);
+      if (!posterUrl) {
+        try {
+          const p = await generateVideoPoster(dataUrl);
+          setPosterUrl(p);
+        } catch {
+          /* poster optional */
+        }
+      }
+    } catch {
+      toast.error("Could not read that video");
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const valid = !!videoUrl && !!caption.trim() && !!art && !!level;
+  const handlePosterFile = async (f: File | null | undefined) => {
+    if (!f) return;
+    if (!f.type.startsWith("image/")) {
+      toast.error("That file is not an image");
+      return;
+    }
+    const mb = f.size / (1024 * 1024);
+    if (mb > MAX_IMAGE_MB) {
+      toast.error(`Cover too large (${mb.toFixed(1)}MB). Max ${MAX_IMAGE_MB}MB.`);
+      return;
+    }
+    try {
+      setPosterUrl(await fileToDataUrl(f));
+    } catch {
+      toast.error("Could not read that image");
+    }
+  };
+
+  const clearVideo = () => {
+    setVideoUrl("");
+    setVideoName("");
+    setVideoSizeMb(0);
+    setPosterUrl("");
+    if (videoFileRef.current) videoFileRef.current.value = "";
+  };
+
+  const valid = !!videoUrl && !!caption.trim() && !!art && !!level && !busy;
 
   const submit = () => {
     if (!valid || !art || !level) return;
-    storeActions.addPost({
-      handle: user?.username ? `@${user.username}` : "@you",
-      caption: caption.trim(),
-      video: videoUrl,
-      poster: posterUrl || "https://images.unsplash.com/photo-1517438476312-10d79c077509?w=800",
-      art,
-      level,
-    });
-    toast.success("Video published to your feed");
-    onClose();
+    try {
+      storeActions.addPost({
+        handle: user?.username ? `@${user.username}` : "@you",
+        caption: caption.trim(),
+        video: videoUrl,
+        poster: posterUrl || "https://images.unsplash.com/photo-1517438476312-10d79c077509?w=800",
+        art,
+        level,
+      });
+      toast.success("Video published to your feed");
+      onClose();
+    } catch {
+      toast.error("Could not save — try a shorter or smaller video");
+    }
   };
 
   return (
     <div className="space-y-5 pb-6">
       <FormHeader title="Upload Video" desc="Share a clip with the community." />
-      <Field label="Video file or URL">
-        <div className="flex gap-2">
-          <input
-            value={videoUrl}
-            onChange={(e) => setVideoUrl(e.target.value)}
-            placeholder="https://… or pick a file"
-            className="profile-input flex-1"
-          />
-          <input
-            ref={videoFileRef}
-            type="file"
-            accept="video/*"
-            className="hidden"
-            onChange={(e) => pickFile(e, setVideoUrl)}
-          />
+      <div className="space-y-1.5">
+        <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">Video</span>
+        <input
+          ref={videoFileRef}
+          type="file"
+          accept="video/*"
+          className="hidden"
+          onChange={(e) => handleVideoFile(e.target.files?.[0])}
+        />
+        {!videoUrl ? (
           <button
             type="button"
             onClick={() => videoFileRef.current?.click()}
-            className="px-3 rounded-xl bg-secondary border border-border text-xs font-bold uppercase tracking-wide"
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              handleVideoFile(e.dataTransfer.files?.[0]);
+            }}
+            className={`w-full flex flex-col items-center justify-center gap-2 py-10 rounded-2xl border-2 border-dashed transition-colors ${
+              dragOver ? "border-accent bg-accent/5" : "border-border bg-card/50"
+            }`}
           >
-            File
+            {busy ? (
+              <Loader2 className="size-7 text-accent animate-spin" />
+            ) : (
+              <Film className="size-7 text-accent" />
+            )}
+            <p className="text-sm font-semibold">
+              {busy ? "Reading video…" : "Tap to choose a video"}
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              or drag & drop · MP4 / MOV · up to {MAX_VIDEO_MB}MB
+            </p>
           </button>
-        </div>
-      </Field>
-      <Field label="Cover image (optional)">
-        <div className="flex gap-2">
-          <input
-            value={posterUrl}
-            onChange={(e) => setPosterUrl(e.target.value)}
-            placeholder="https://… or pick a file"
-            className="profile-input flex-1"
-          />
-          <input
-            ref={posterFileRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => pickFile(e, setPosterUrl)}
-          />
+        ) : (
+          <div className="rounded-2xl border border-border bg-card overflow-hidden">
+            <video
+              src={videoUrl}
+              controls
+              playsInline
+              className="w-full aspect-video bg-black object-contain"
+            />
+            <div className="flex items-center justify-between gap-2 p-3">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold truncate">{videoName || "Selected video"}</p>
+                <p className="text-[10px] font-mono text-muted-foreground uppercase">
+                  {videoSizeMb ? `${videoSizeMb.toFixed(1)}MB` : "Ready"} · saved locally
+                </p>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => videoFileRef.current?.click()}
+                  className="px-2.5 py-1.5 rounded-lg bg-secondary border border-border text-[10px] font-bold uppercase tracking-wide"
+                >
+                  Replace
+                </button>
+                <button
+                  type="button"
+                  onClick={clearVideo}
+                  className="px-2.5 py-1.5 rounded-lg bg-secondary border border-border text-[10px] font-bold uppercase tracking-wide text-muted-foreground flex items-center gap-1"
+                >
+                  <Trash2 className="size-3" /> Remove
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-1.5">
+        <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
+          Cover image · auto-generated
+        </span>
+        <input
+          ref={posterFileRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => handlePosterFile(e.target.files?.[0])}
+        />
+        <div className="flex items-center gap-3 p-2 rounded-2xl bg-card border border-border">
+          <div className="size-16 rounded-lg overflow-hidden bg-secondary shrink-0 flex items-center justify-center">
+            {posterUrl ? (
+              <img src={posterUrl} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <ImagePlus className="size-5 text-muted-foreground" />
+            )}
+          </div>
+          <p className="flex-1 text-[11px] text-muted-foreground">
+            {posterUrl ? "Looks good? Replace it if you want a different cover." : "Pick a custom cover or we'll grab one from the video."}
+          </p>
           <button
             type="button"
             onClick={() => posterFileRef.current?.click()}
-            className="px-3 rounded-xl bg-secondary border border-border text-xs font-bold uppercase tracking-wide"
+            className="px-2.5 py-1.5 rounded-lg bg-secondary border border-border text-[10px] font-bold uppercase tracking-wide"
           >
-            File
+            {posterUrl ? "Replace" : "Pick"}
           </button>
         </div>
-      </Field>
+      </div>
       <Field label="Caption">
         <textarea
           value={caption}
