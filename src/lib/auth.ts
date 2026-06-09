@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import avatar1 from "@/assets/avatar-1.jpg";
 
 const KEY = "strive-user";
 
@@ -9,6 +10,8 @@ export interface LocalUser {
   arts?: string[];
   level?: string;
   prefs?: string[];
+  bio?: string;
+  avatar?: string;
   createdAt: number;
 }
 
@@ -38,8 +41,20 @@ if (typeof window !== "undefined") {
 
 export const auth = {
   signIn(u: Omit<LocalUser, "createdAt">) {
-    const full: LocalUser = { ...u, createdAt: Date.now() };
+    const full: LocalUser = {
+      ...u,
+      avatar: u.avatar ?? avatar1,
+      bio: u.bio ?? "",
+      createdAt: Date.now(),
+    };
     localStorage.setItem(KEY, JSON.stringify(full));
+    emit();
+  },
+  update(patch: Partial<LocalUser>) {
+    const current = read();
+    if (!current) return;
+    const next: LocalUser = { ...current, ...patch };
+    localStorage.setItem(KEY, JSON.stringify(next));
     emit();
   },
   signOut() {
