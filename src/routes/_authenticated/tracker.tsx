@@ -73,10 +73,13 @@ function TrackerNotFound() {
 function TrackerPage() {
   const sessions = useStore((s) => s.sessions);
   const goals = useStore((s) => s.goals);
+  const schedule = useStore((s) => s.schedule);
   const user = useUser();
   const [adding, setAdding] = useState(false);
   const [prefillDate, setPrefillDate] = useState<string | null>(null);
   const [monthOffset, setMonthOffset] = useState(0);
+  const [editingSlot, setEditingSlot] = useState<ScheduleSlot | null>(null);
+  const [addingSlot, setAddingSlot] = useState(false);
 
   const days = useMemo(() => {
     const today = new Date();
