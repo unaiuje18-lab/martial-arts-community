@@ -77,8 +77,6 @@ function TrackerPage() {
   const [prefillDate, setPrefillDate] = useState<string | null>(null);
   const [monthOffset, setMonthOffset] = useState(0);
 
-  if (!user) return <PrivateGate />;
-
   const days = useMemo(() => {
     const today = new Date();
     return Array.from({ length: 28 }, (_, i) => {
@@ -104,6 +102,8 @@ function TrackerPage() {
     return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "—";
   }, [sessions]);
   const streak = computeStreak(sessions);
+
+  if (!user) return <PrivateGate />;
 
   const sorted = [...sessions].sort((a, b) => +new Date(b.date) - +new Date(a.date));
 
@@ -188,7 +188,7 @@ function TrackerPage() {
         <div>
           <h1 className="font-display text-4xl uppercase tracking-tight italic">Training Log</h1>
           <p className="text-sm text-muted-foreground">
-            {user.name.split(" ")[0]} · Streak {streak || ME.streak} days · Keep it lit.
+            {user.name.split(" ")[0]} · Streak {streak} {streak === 1 ? "day" : "days"} · Keep it lit.
           </p>
         </div>
 
