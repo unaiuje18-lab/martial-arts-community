@@ -11,6 +11,8 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError, installGlobalErrorHandlers } from "../lib/lovable-error-reporting";
+import { installPerformanceObservers } from "../lib/metrics";
+import { IncidentsPanel } from "@/components/IncidentsPanel";
 import { Toaster } from "@/components/ui/sonner";
 
 function NotFoundComponent() {
@@ -132,6 +134,7 @@ function RootComponent() {
 
   useEffect(() => {
     installGlobalErrorHandlers();
+    installPerformanceObservers();
   }, []);
 
   return (
@@ -139,6 +142,7 @@ function RootComponent() {
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
       <Toaster position="top-center" />
+      <IncidentsPanel />
     </QueryClientProvider>
   );
 }
