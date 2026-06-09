@@ -2,6 +2,19 @@ import { useSyncExternalStore } from "react";
 import { SESSIONS, GOALS, DUELS, FEED, type TrainingSession, type Goal, type FeedPost, type Duel, type Art } from "./mock-data";
 import { supabase } from "@/integrations/supabase/client";
 
+// Database types are auto-generated and currently empty for these tables.
+// Cast the client to bypass the strict generated schema until types regenerate.
+const db = supabase as unknown as {
+  from: (t: string) => {
+    select: (cols?: string) => {
+      order: (col: string, opts?: { ascending?: boolean }) => { limit: (n: number) => Promise<{ data: Record<string, unknown>[] | null; error: { message: string } | null }> };
+    };
+    insert: (row: Record<string, unknown>) => {
+      select: () => { single: () => Promise<{ data: Record<string, unknown> | null; error: { message: string } | null }> };
+    };
+  };
+};
+
 const KEY = "strive-state-v1";
 
 export interface Comment {
@@ -66,8 +79,8 @@ if (typeof window !== "undefined") {
 async function hydrateFromBackend() {
   try {
     const [{ data: posts }, { data: duels }] = await Promise.all([
-      supabase.from("posts").select("*").order("created_at", { ascending: false }).limit(100),
-      supabase.from("duels").select("*").order("created_at", { ascending: false }).limit(100),
+      db.from("posts").select("*").order("created_at", { ascending: false }).limit(100),
+      db.from("duels").select("*").order("created_at", { ascending: false }).limit(100),
     ]);
     const remotePosts: FeedPost[] = (posts ?? []).map((r: Record<string, unknown>) => ({
       id: String(r.id),
@@ -238,7 +251,7 @@ export const actions = {
   }): Promise<FeedPost> {
     const tags = input.tags?.length ? input.tags : [input.art, input.level];
     return (async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("posts")
         .insert({
           handle: input.handle,
@@ -287,7 +300,7 @@ export const actions = {
     bPosterPath?: string;
   }): Promise<Duel> {
     return (async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("duels")
         .insert({
           title: input.title,
