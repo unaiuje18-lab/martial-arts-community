@@ -71,16 +71,21 @@ function load(): State {
 
 function persist() {
   if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(KEY, JSON.stringify(state));
-  } catch {
-    /* ignore quota */
-  }
+  localStorage.setItem(KEY, JSON.stringify(state));
 }
 
 function set(updater: (s: State) => State) {
-  state = updater(state);
-  persist();
+  const prev = state;
+  const next = updater(state);
+  state = next;
+  try {
+    persist();
+  } catch (e) {
+    // rollback on quota errors so the UI can surface the failure
+    state = prev;
+    listeners.forEach((l) => l());
+    throw e;
+  }
   listeners.forEach((l) => l());
 }
 
