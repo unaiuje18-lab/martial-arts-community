@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import { Settings, Lock, Flame, Award, Pencil, X, Check } from "lucide-react";
+import { useRef } from "react";
+import { Lock, Flame, Award, Pencil, X, Check, Camera } from "lucide-react";
 import { MobileShell } from "@/components/MobileShell";
-import { ME, BADGES, SESSIONS, formatCount, ARTS, type Art } from "@/lib/mock-data";
+import { ME, BADGES, SESSIONS, formatCount, ARTS, LEVELS, CONTENT_PREFS, type Art } from "@/lib/mock-data";
 import { auth, useUser } from "@/lib/auth";
 import {
   Sheet,
