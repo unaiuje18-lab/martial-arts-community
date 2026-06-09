@@ -192,7 +192,13 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
   const [level, setLevel] = useState<string>(user?.level ?? "Intermediate");
   const [prefs, setPrefs] = useState<string[]>(user?.prefs ?? []);
   const [avatar, setAvatar] = useState<string | undefined>(user?.avatar);
-  const [ranks, setRanks] = useState<Record<string, { type: "belt" | "years"; value: string; system?: string }>>(
+  type RankEntry = {
+    type: "belt" | "years";
+    value: string;
+    system?: string;
+    history?: { belt: string; date: string }[];
+  };
+  const [ranks, setRanks] = useState<Record<string, RankEntry>>(
     user?.ranks ?? {},
   );
   const fileRef = useRef<HTMLInputElement>(null);
@@ -210,6 +216,21 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
   };
 
   const save = () => {
+    // Validate ranks against active belt system; drop invalid values.
+    const cleanRanks: Record<string, RankEntry> = {};
+    for (const [art, r] of Object.entries(ranks)) {
+      const systems = BELT_SYSTEMS[art as Art];
+      if (systems) {
+        const sys = systems.find((s) => s.id === r.system) ?? systems[0];
+        const validValue = sys.belts.includes(r.value) ? r.value : "";
+        const validHistory = (r.history ?? []).filter((h) => sys.belts.includes(h.belt));
+        if (validValue || validHistory.length) {
+          cleanRanks[art] = { type: "belt", value: validValue, system: sys.id, history: validHistory };
+        }
+      } else if (r.value) {
+        cleanRanks[art] = { type: "years", value: r.value };
+      }
+    }
     auth.update({
       name: name.trim(),
       username: username.trim().replace(/\s/g, "_").toLowerCase(),
@@ -219,7 +240,7 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
       level,
       prefs,
       avatar,
-      ranks,
+      ranks: cleanRanks,
     });
     onClose();
   };
@@ -234,14 +255,39 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
   const setRankValue = (art: Art, value: string, system?: string) => {
     setRanks((prev) => ({
       ...prev,
-      [art]: { type: hasBelts(art) ? "belt" : "years", value, system },
+      [art]: {
+        ...(prev[art] ?? {}),
+        type: hasBelts(art) ? "belt" : "years",
+        value,
+        system,
+      },
     }));
   };
   const setRankSystem = (art: Art, system: string) => {
     setRanks((prev) => ({
       ...prev,
-      [art]: { type: "belt", value: "", system },
+      [art]: { type: "belt", value: "", system, history: [] },
     }));
+  };
+  const addHistoryEntry = (art: Art, belt: string, date: string) => {
+    if (!belt || !date) return;
+    setRanks((prev) => {
+      const cur = prev[art] ?? { type: "belt" as const, value: "" };
+      const hist = [...(cur.history ?? []), { belt, date }].sort((a, b) =>
+        a.date.localeCompare(b.date),
+      );
+      return { ...prev, [art]: { ...cur, history: hist } };
+    });
+  };
+  const removeHistoryEntry = (art: Art, idx: number) => {
+    setRanks((prev) => {
+      const cur = prev[art];
+      if (!cur?.history) return prev;
+      return {
+        ...prev,
+        [art]: { ...cur, history: cur.history.filter((_, i) => i !== idx) },
+      };
+    });
   };
 
   return (
