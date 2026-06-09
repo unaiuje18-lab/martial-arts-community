@@ -5,17 +5,9 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Design system definition.
- *
- * The @theme inline block maps CSS custom properties to Tailwind utility
- * classes (e.g. --color-primary -> bg-primary, text-primary).
- *
- * The :root and .dark blocks define the actual color values using oklch.
- * All colors MUST use oklch format.
- *
- * To add a new semantic color:
- * 1. Add the variable to :root (light value) and .dark (dark value)
- * 2. Register it in @theme inline as --color-<name>: var(--<name>)
+ * STRIVE — Electric Performance dark theme.
+ * Mobile-first martial arts training & community app.
+ * Tokens are dark-by-default; the app always renders in dark mode.
  */
 
 @theme inline {
@@ -59,42 +51,51 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --font-display: "Anton", "Inter", sans-serif;
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --ease-snap: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.129 0.042 264.695);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.129 0.042 264.695);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.129 0.042 264.695);
-  --primary: oklch(0.208 0.042 265.755);
-  --primary-foreground: oklch(0.984 0.003 247.858);
-  --secondary: oklch(0.968 0.007 247.896);
-  --secondary-foreground: oklch(0.208 0.042 265.755);
-  --muted: oklch(0.968 0.007 247.896);
-  --muted-foreground: oklch(0.554 0.046 257.417);
-  --accent: oklch(0.968 0.007 247.896);
-  --accent-foreground: oklch(0.208 0.042 265.755);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(0.929 0.013 255.508);
-  --input: oklch(0.929 0.013 255.508);
-  --ring: oklch(0.704 0.04 256.788);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.984 0.003 247.858);
-  --sidebar-foreground: oklch(0.129 0.042 264.695);
-  --sidebar-primary: oklch(0.208 0.042 265.755);
-  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-accent: oklch(0.968 0.007 247.896);
-  --sidebar-accent-foreground: oklch(0.208 0.042 265.755);
-  --sidebar-border: oklch(0.929 0.013 255.508);
-  --sidebar-ring: oklch(0.704 0.04 256.788);
+  --radius: 0.875rem;
+  /* #0B0B0C */
+  --background: oklch(0.135 0.003 270);
+  --foreground: oklch(1 0 0);
+  /* #16161A */
+  --card: oklch(0.17 0.004 270);
+  --card-foreground: oklch(1 0 0);
+  --popover: oklch(0.17 0.004 270);
+  --popover-foreground: oklch(1 0 0);
+  /* #2E5BFF — electric blue */
+  --primary: oklch(0.58 0.22 264);
+  --primary-foreground: oklch(1 0 0);
+  /* #1E1E20 muted */
+  --secondary: oklch(0.22 0.004 270);
+  --secondary-foreground: oklch(1 0 0);
+  --muted: oklch(0.22 0.004 270);
+  --muted-foreground: oklch(0.7 0.01 270);
+  /* #CCFF00 — accent volt */
+  --accent: oklch(0.94 0.23 122);
+  --accent-foreground: oklch(0.135 0.003 270);
+  --destructive: oklch(0.65 0.24 25);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.94 0.23 122);
+  --chart-1: oklch(0.94 0.23 122);
+  --chart-2: oklch(0.58 0.22 264);
+  --chart-3: oklch(0.7 0.18 35);
+  --chart-4: oklch(0.65 0.2 320);
+  --chart-5: oklch(0.8 0.15 200);
+  --sidebar: oklch(0.135 0.003 270);
+  --sidebar-foreground: oklch(1 0 0);
+  --sidebar-primary: oklch(0.94 0.23 122);
+  --sidebar-primary-foreground: oklch(0.135 0.003 270);
+  --sidebar-accent: oklch(0.22 0.004 270);
+  --sidebar-accent-foreground: oklch(1 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.94 0.23 122);
 }
 
 .dark {
@@ -140,5 +141,28 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior: none;
+  }
+
+  html, body {
+    background-color: var(--color-background);
   }
 }
+
+@keyframes slideUp {
+  from { transform: translateY(16px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.animate-snap-in {
+  animation: slideUp 0.4s var(--ease-snap) both;
+}
+
+.font-display { font-family: var(--font-display); }
+.font-mono { font-family: var(--font-mono); }
+
+/* hide scrollbars in feed */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
