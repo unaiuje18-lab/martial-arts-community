@@ -40,6 +40,7 @@ export const CONTENT_PREFS = [
 export interface FeedPost {
   id: string;
   poster: string;
+  video: string;
   handle: string;
   meta: string;
   caption: string;
@@ -54,6 +55,7 @@ export const FEED: FeedPost[] = [
   {
     id: "1",
     poster: feed1,
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
     handle: "@marcus_striking",
     meta: "Pro • Welterweight",
     caption:
@@ -67,6 +69,7 @@ export const FEED: FeedPost[] = [
   {
     id: "2",
     poster: feed2,
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
     handle: "@kai_zen",
     meta: "Brown belt • No-Gi",
     caption:
@@ -80,6 +83,7 @@ export const FEED: FeedPost[] = [
   {
     id: "3",
     poster: feed3,
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
     handle: "@iron_jab",
     meta: "Amateur • Lightweight",
     caption:
