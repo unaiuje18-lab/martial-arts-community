@@ -41,7 +41,7 @@ function TrackerErrorBoundary({ error, reset }: { error: Error; reset: () => voi
     });
   }, [inc.id, error, reset, router]);
   return (
-    <MobileShell title="Tracker">
+    <MobileShell>
       <div className="p-6 space-y-3 text-sm">
         <h1 className="text-lg font-semibold">Tracker no disponible</h1>
         <p className="text-muted-foreground">Incidencia <code>{inc.id}</code>: {error.message}</p>
@@ -63,7 +63,7 @@ function TrackerNotFound() {
     toast.warning("Tracker no encontrado", { description: inc.id });
   }, []);
   return (
-    <MobileShell title="Tracker">
+    <MobileShell>
       <div className="p-6 text-sm text-muted-foreground">Ruta no encontrada.</div>
     </MobileShell>
   );
