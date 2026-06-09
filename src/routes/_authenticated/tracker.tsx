@@ -1,5 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
+import { useRouter } from "@tanstack/react-router";
+import { toast } from "sonner";
+import { logIncident } from "@/lib/incident";
 import { ArrowLeft, ChevronLeft, ChevronRight, Lock, Plus, Trash2, X } from "lucide-react";
 import { MobileShell } from "@/components/MobileShell";
 import { ARTS, ME, type Art } from "@/lib/mock-data";
@@ -14,7 +17,57 @@ export const Route = createFileRoute("/_authenticated/tracker")({
     ],
   }),
   component: TrackerPage,
+  errorComponent: TrackerErrorBoundary,
+  notFoundComponent: TrackerNotFound,
 });
+
+function TrackerErrorBoundary({ error, reset }: { error: Error; reset: () => void }) {
+  const router = useRouter();
+  const inc = useMemo(
+    () => logIncident(error, { route: "/tracker", scope: "route-error" }),
+    [error],
+  );
+  useEffect(() => {
+    console.error(`[tracker] failed to load (${inc.id})`, error);
+    toast.error("No se pudo cargar Tracker", {
+      description: `${inc.id} · ${error.message}`,
+      action: {
+        label: "Reintentar",
+        onClick: () => {
+          reset();
+          router.invalidate();
+        },
+      },
+    });
+  }, [inc.id, error, reset, router]);
+  return (
+    <MobileShell title="Tracker">
+      <div className="p-6 space-y-3 text-sm">
+        <h1 className="text-lg font-semibold">Tracker no disponible</h1>
+        <p className="text-muted-foreground">Incidencia <code>{inc.id}</code>: {error.message}</p>
+        <button
+          className="rounded-md border px-3 py-1.5"
+          onClick={() => { reset(); router.invalidate(); }}
+        >
+          Reintentar
+        </button>
+      </div>
+    </MobileShell>
+  );
+}
+
+function TrackerNotFound() {
+  useEffect(() => {
+    const inc = logIncident("Tracker route not found", { route: "/tracker", scope: "route-not-found" });
+    console.warn(`[tracker] not found (${inc.id})`);
+    toast.warning("Tracker no encontrado", { description: inc.id });
+  }, []);
+  return (
+    <MobileShell title="Tracker">
+      <div className="p-6 text-sm text-muted-foreground">Ruta no encontrada.</div>
+    </MobileShell>
+  );
+}
 
 function TrackerPage() {
   const sessions = useStore((s) => s.sessions);
