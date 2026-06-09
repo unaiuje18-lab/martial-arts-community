@@ -28,6 +28,7 @@ export type Database = {
           id: string
           technique: string
           title: string
+          user_id: string | null
         }
         Insert: {
           a_handle: string
@@ -42,6 +43,7 @@ export type Database = {
           id?: string
           technique: string
           title: string
+          user_id?: string | null
         }
         Update: {
           a_handle?: string
@@ -56,6 +58,7 @@ export type Database = {
           id?: string
           technique?: string
           title?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -72,6 +75,7 @@ export type Database = {
           poster: string
           poster_path: string | null
           tags: string[]
+          user_id: string | null
           video: string
           video_path: string | null
         }
@@ -87,6 +91,7 @@ export type Database = {
           poster: string
           poster_path?: string | null
           tags?: string[]
+          user_id?: string | null
           video: string
           video_path?: string | null
         }
@@ -102,8 +107,42 @@ export type Database = {
           poster?: string
           poster_path?: string | null
           tags?: string[]
+          user_id?: string | null
           video?: string
           video_path?: string | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          bio: string | null
+          created_at: string
+          display_name: string | null
+          handle: string
+          id: string
+          primary_art: string | null
+          updated_at: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          bio?: string | null
+          created_at?: string
+          display_name?: string | null
+          handle: string
+          id: string
+          primary_art?: string | null
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          bio?: string | null
+          created_at?: string
+          display_name?: string | null
+          handle?: string
+          id?: string
+          primary_art?: string | null
+          updated_at?: string
         }
         Relationships: []
       }

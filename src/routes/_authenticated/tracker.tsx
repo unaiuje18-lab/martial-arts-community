@@ -6,7 +6,7 @@ import { ARTS, ME, type Art } from "@/lib/mock-data";
 import { actions, computeStreak, useStore } from "@/lib/store";
 import { useUser } from "@/lib/auth";
 
-export const Route = createFileRoute("/tracker")({
+export const Route = createFileRoute("/_authenticated/tracker")({
   head: () => ({
     meta: [
       { title: "STRIVE — Training Tracker" },

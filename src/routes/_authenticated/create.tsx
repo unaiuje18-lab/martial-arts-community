@@ -40,7 +40,7 @@ import { actions as storeActions } from "@/lib/store";
 import { useUser } from "@/lib/auth";
 import { uploadMedia, type UploadResult } from "@/lib/media-upload";
 
-export const Route = createFileRoute("/create")({
+export const Route = createFileRoute("/_authenticated/create")({
   head: () => ({
     meta: [
       { title: "STRIVE — Create" },

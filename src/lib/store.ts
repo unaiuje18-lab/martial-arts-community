@@ -265,9 +265,12 @@ export const actions = {
   }): Promise<FeedPost> {
     const tags = input.tags?.length ? input.tags : [input.art, input.level];
     return (async () => {
+      const { data: auth } = await supabase.auth.getUser();
+      if (!auth.user) throw new Error("Sign in to publish");
       const { data, error } = await db
         .from("posts")
         .insert({
+          user_id: auth.user.id,
           handle: input.handle,
           caption: input.caption,
           video: input.video,
@@ -314,9 +317,12 @@ export const actions = {
     bPosterPath?: string;
   }): Promise<Duel> {
     return (async () => {
+      const { data: auth } = await supabase.auth.getUser();
+      if (!auth.user) throw new Error("Sign in to publish");
       const { data, error } = await db
         .from("duels")
         .insert({
+          user_id: auth.user.id,
           title: input.title,
           technique: input.technique,
           a_handle: input.aHandle,
