@@ -34,6 +34,16 @@ export interface Achievement {
   at: number;
 }
 
+export interface ScheduleSlot {
+  id: string;
+  label: string; // e.g. "BJJ", "Kickboxing", "Running"
+  days: number[]; // 0=Sun … 6=Sat
+  start: string; // "HH:MM" 24h
+  end: string;   // "HH:MM" 24h
+  location?: string;
+  color?: string; // optional CSS color override
+}
+
 interface State {
   likes: Record<string, boolean>;
   saves: Record<string, boolean>;
@@ -48,6 +58,7 @@ interface State {
   userPosts: FeedPost[];
   userDuels: Duel[];
   achievements: Achievement[];
+  schedule: ScheduleSlot[];
 }
 
 function seed(): State {
@@ -65,6 +76,7 @@ function seed(): State {
     userPosts: [],
     userDuels: [],
     achievements: [],
+    schedule: [],
   };
 }
 
@@ -245,6 +257,20 @@ export const actions = {
   },
   deleteSession(id: string) {
     set((s) => ({ ...s, sessions: s.sessions.filter((x) => x.id !== id) }));
+  },
+  addScheduleSlot(slot: Omit<ScheduleSlot, "id">) {
+    const full: ScheduleSlot = { ...slot, id: crypto.randomUUID() };
+    set((s) => ({ ...s, schedule: [...s.schedule, full] }));
+    return full;
+  },
+  updateScheduleSlot(id: string, patch: Partial<ScheduleSlot>) {
+    set((s) => ({
+      ...s,
+      schedule: s.schedule.map((x) => (x.id === id ? { ...x, ...patch } : x)),
+    }));
+  },
+  deleteScheduleSlot(id: string) {
+    set((s) => ({ ...s, schedule: s.schedule.filter((x) => x.id !== id) }));
   },
   updateGoal(id: string, patch: Partial<Goal>) {
     set((s) => ({ ...s, goals: s.goals.map((g) => (g.id === id ? { ...g, ...patch } : g)) }));

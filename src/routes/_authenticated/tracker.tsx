@@ -1,12 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { useRouter } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { logIncident } from "@/lib/incident";
-import { ArrowLeft, ChevronLeft, ChevronRight, Lock, Plus, Trash2, X } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, Lock, Plus, Trash2, X, Calendar as CalendarIcon, Link2, Image as ImageIcon, ExternalLink } from "lucide-react";
 import { MobileShell } from "@/components/MobileShell";
 import { ARTS, ME, type Art } from "@/lib/mock-data";
-import { actions, computeStreak, lastTrainingDate, localDayKey, useStore } from "@/lib/store";
+import { actions, computeStreak, lastTrainingDate, localDayKey, useStore, type ScheduleSlot } from "@/lib/store";
 import type { TrainingSession } from "@/lib/mock-data";
 import { useUser } from "@/lib/auth";
 
@@ -73,10 +73,13 @@ function TrackerNotFound() {
 function TrackerPage() {
   const sessions = useStore((s) => s.sessions);
   const goals = useStore((s) => s.goals);
+  const schedule = useStore((s) => s.schedule);
   const user = useUser();
   const [adding, setAdding] = useState(false);
   const [prefillDate, setPrefillDate] = useState<string | null>(null);
   const [monthOffset, setMonthOffset] = useState(0);
+  const [editingSlot, setEditingSlot] = useState<ScheduleSlot | null>(null);
+  const [addingSlot, setAddingSlot] = useState(false);
 
   const days = useMemo(() => {
     const today = new Date();
@@ -201,6 +204,12 @@ function TrackerPage() {
         </section>
 
         <StreakCard sessions={sessions} streak={streak} />
+
+        <WeeklySchedule
+          schedule={schedule}
+          onAdd={() => setAddingSlot(true)}
+          onEdit={(slot) => setEditingSlot(slot)}
+        />
 
         <section className="space-y-3">
           <div className="flex items-center justify-between">
@@ -381,10 +390,11 @@ function TrackerPage() {
           <div className="space-y-2">
             {sorted.map((s) => {
               const date = new Date(s.date);
+              const label = s.activity?.trim() ? s.activity : s.art;
               return (
                 <div
                   key={s.id}
-                  className="flex items-center gap-4 p-3 rounded-xl bg-card border border-border border-l-2 border-l-accent"
+                  className="flex items-start gap-4 p-3 rounded-xl bg-card border border-border border-l-2 border-l-accent"
                 >
                   <div className="size-11 rounded-xl bg-accent/10 border border-accent/20 flex flex-col items-center justify-center leading-none shrink-0">
                     <span className="text-[8px] font-mono text-accent uppercase">
@@ -393,11 +403,28 @@ function TrackerPage() {
                     <span className="text-sm font-bold text-accent">{date.getDate()}</span>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold truncate">{s.art}</p>
+                    <p className="text-sm font-semibold truncate">{label}</p>
                     <p className="text-[10px] font-mono text-muted-foreground uppercase">
                       {s.durationMin} min · RPE {s.effort}/10
                       {s.notes ? ` · ${s.notes}` : ""}
                     </p>
+                    {(s.stravaUrl || s.photoUrl) && (
+                      <div className="flex items-center gap-2 mt-2">
+                        {s.photoUrl && (
+                          <img src={s.photoUrl} alt="" className="size-12 rounded-md object-cover border border-border" />
+                        )}
+                        {s.stravaUrl && (
+                          <a
+                            href={s.stravaUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider text-accent hover:underline"
+                          >
+                            <ExternalLink className="size-3" /> Strava
+                          </a>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <button
                     onClick={() => actions.deleteSession(s.id)}
@@ -417,6 +444,12 @@ function TrackerPage() {
         <AddSessionSheet
           initialDate={prefillDate ?? new Date().toISOString().slice(0, 10)}
           onClose={() => { setAdding(false); setPrefillDate(null); }}
+        />
+      )}
+      {(addingSlot || editingSlot) && (
+        <ScheduleSlotSheet
+          initial={editingSlot}
+          onClose={() => { setAddingSlot(false); setEditingSlot(null); }}
         />
       )}
     </MobileShell>
@@ -522,8 +555,26 @@ function AddSessionSheet({ onClose, initialDate }: { onClose: () => void; initia
   const [notes, setNotes] = useState("");
   const [date, setDate] = useState(initialDate);
   const [completed, setCompleted] = useState(true);
+  const [activity, setActivity] = useState("");
+  const [stravaUrl, setStravaUrl] = useState("");
+  const [photoUrl, setPhotoUrl] = useState<string | undefined>(undefined);
+  const photoRef = useRef<HTMLInputElement>(null);
+
+  const onPickPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.size > 3 * 1024 * 1024) { toast.error("Image too large (max 3MB)"); return; }
+    const reader = new FileReader();
+    reader.onload = () => setPhotoUrl(reader.result as string);
+    reader.readAsDataURL(f);
+  };
 
   const save = () => {
+    const url = stravaUrl.trim();
+    if (url && !/^https?:\/\//i.test(url)) {
+      toast.error("Strava link must start with http(s)://");
+      return;
+    }
     actions.addSession({
       art,
       durationMin: duration,
@@ -531,6 +582,9 @@ function AddSessionSheet({ onClose, initialDate }: { onClose: () => void; initia
       notes: notes.trim() || undefined,
       date: new Date(date).toISOString(),
       completed,
+      activity: activity.trim() || undefined,
+      stravaUrl: url || undefined,
+      photoUrl,
     });
     onClose();
   };
@@ -621,6 +675,51 @@ function AddSessionSheet({ onClose, initialDate }: { onClose: () => void; initia
               className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-1 focus:ring-accent resize-none"
             />
           </Field>
+          <Field label="Custom activity (optional)">
+            <input
+              value={activity}
+              onChange={(e) => setActivity(e.target.value)}
+              placeholder="Running, Swimming, Yoga…"
+              maxLength={40}
+              className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-1 focus:ring-accent"
+            />
+          </Field>
+          <Field label="Strava link (optional)">
+            <div className="relative">
+              <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <input
+                value={stravaUrl}
+                onChange={(e) => setStravaUrl(e.target.value)}
+                placeholder="https://www.strava.com/activities/…"
+                inputMode="url"
+                className="w-full bg-secondary rounded-lg pl-9 pr-3 py-2.5 text-sm outline-none focus:ring-1 focus:ring-accent"
+              />
+            </div>
+          </Field>
+          <Field label="Photo (optional)">
+            <input ref={photoRef} type="file" accept="image/*" onChange={onPickPhoto} className="hidden" />
+            {photoUrl ? (
+              <div className="relative">
+                <img src={photoUrl} alt="Session" className="w-full h-40 object-cover rounded-lg" />
+                <button
+                  type="button"
+                  onClick={() => setPhotoUrl(undefined)}
+                  className="absolute top-2 right-2 size-7 rounded-full bg-black/60 text-white flex items-center justify-center"
+                  aria-label="Remove photo"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => photoRef.current?.click()}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-lg border border-dashed border-border text-xs font-mono uppercase tracking-wider text-muted-foreground"
+              >
+                <ImageIcon className="size-4" /> Add photo (max 3MB)
+              </button>
+            )}
+          </Field>
           <button
             onClick={save}
             className="w-full py-3 rounded-xl bg-accent text-accent-foreground font-bold uppercase tracking-wide active:scale-[0.98] transition-transform"
@@ -638,6 +737,236 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div className="space-y-2">
       <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">{label}</p>
       {children}
+    </div>
+  );
+}
+
+const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+// Render order Monday-first; map column index → JS day index (0=Sun..6=Sat)
+const DAY_JS_INDEX = [1, 2, 3, 4, 5, 6, 0];
+
+function WeeklySchedule({
+  schedule,
+  onAdd,
+  onEdit,
+}: {
+  schedule: ScheduleSlot[];
+  onAdd: () => void;
+  onEdit: (slot: ScheduleSlot) => void;
+}) {
+  const byDay = useMemo(() => {
+    const out: Record<number, ScheduleSlot[]> = {};
+    for (let i = 0; i < 7; i++) out[i] = [];
+    for (const s of schedule) for (const d of s.days) (out[d] ??= []).push(s);
+    for (const k of Object.keys(out)) {
+      out[Number(k)].sort((a, b) => a.start.localeCompare(b.start));
+    }
+    return out;
+  }, [schedule]);
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="font-display text-xl uppercase italic tracking-tight">Weekly Schedule</h2>
+        <button
+          onClick={onAdd}
+          className="flex items-center gap-1 text-[10px] font-mono uppercase text-accent tracking-widest"
+        >
+          <Plus className="size-3" /> Add
+        </button>
+      </div>
+      {schedule.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          Set your recurring training (e.g. BJJ Mon/Wed/Fri 19:30–20:30).
+        </p>
+      )}
+      <div className="grid grid-cols-7 gap-1.5">
+        {DAY_LABELS.map((label, col) => {
+          const jsIdx = DAY_JS_INDEX[col];
+          const slots = byDay[jsIdx] ?? [];
+          return (
+            <div key={label} className="space-y-1.5">
+              <p className="text-[9px] font-mono uppercase text-muted-foreground tracking-widest text-center">
+                {label}
+              </p>
+              <div className="space-y-1 min-h-16">
+                {slots.length === 0 ? (
+                  <div className="h-10 rounded-md border border-dashed border-border/60" />
+                ) : (
+                  slots.map((s) => (
+                    <button
+                      key={s.id + jsIdx}
+                      onClick={() => onEdit(s)}
+                      className="w-full rounded-md bg-accent/15 border border-accent/30 px-1.5 py-1.5 text-left active:scale-95 transition-transform"
+                      style={s.color ? { background: `${s.color}26`, borderColor: `${s.color}66` } : undefined}
+                    >
+                      <p className="text-[10px] font-bold uppercase tracking-tight truncate leading-tight">
+                        {s.label}
+                      </p>
+                      <p className="text-[9px] font-mono text-muted-foreground leading-tight">
+                        {s.start}
+                      </p>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {schedule.length > 0 && (
+        <ul className="space-y-1.5 pt-1">
+          {schedule.map((s) => (
+            <li
+              key={s.id}
+              className="flex items-center justify-between gap-2 text-xs bg-card border border-border rounded-lg px-3 py-2"
+            >
+              <div className="min-w-0">
+                <p className="font-semibold truncate">{s.label}</p>
+                <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">
+                  {s.days
+                    .slice()
+                    .sort()
+                    .map((d) => DAY_LABELS[(d + 6) % 7])
+                    .join(" · ")} · {s.start}–{s.end}
+                  {s.location ? ` · ${s.location}` : ""}
+                </p>
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => onEdit(s)}
+                  className="text-[10px] font-mono uppercase text-accent tracking-wider px-2"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => actions.deleteScheduleSlot(s.id)}
+                  aria-label="Delete slot"
+                  className="size-7 rounded-full hover:bg-destructive/10 text-muted-foreground hover:text-destructive flex items-center justify-center"
+                >
+                  <Trash2 className="size-3" />
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function ScheduleSlotSheet({
+  initial,
+  onClose,
+}: {
+  initial: ScheduleSlot | null;
+  onClose: () => void;
+}) {
+  const [label, setLabel] = useState(initial?.label ?? "");
+  const [days, setDays] = useState<number[]>(initial?.days ?? []);
+  const [start, setStart] = useState(initial?.start ?? "19:00");
+  const [end, setEnd] = useState(initial?.end ?? "20:30");
+  const [location, setLocation] = useState(initial?.location ?? "");
+
+  const toggleDay = (d: number) =>
+    setDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]));
+
+  const save = () => {
+    if (!label.trim()) { toast.error("Add an activity name"); return; }
+    if (days.length === 0) { toast.error("Pick at least one day"); return; }
+    if (start >= end) { toast.error("End time must be after start"); return; }
+    const payload = {
+      label: label.trim(),
+      days: days.slice().sort(),
+      start,
+      end,
+      location: location.trim() || undefined,
+    };
+    if (initial) actions.updateScheduleSlot(initial.id, payload);
+    else actions.addScheduleSlot(payload);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end" role="dialog" aria-modal="true">
+      <button onClick={onClose} aria-label="Close" className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="relative w-full max-h-[90dvh] overflow-y-auto bg-card border-t border-border rounded-t-2xl animate-snap-in">
+        <div className="flex items-center justify-between p-4 border-b border-border sticky top-0 bg-card">
+          <h3 className="font-display uppercase italic tracking-tight flex items-center gap-2">
+            <CalendarIcon className="size-4" />
+            {initial ? "Edit Slot" : "New Slot"}
+          </h3>
+          <button onClick={onClose} aria-label="Close" className="size-8 rounded-full bg-secondary flex items-center justify-center">
+            <X className="size-4" />
+          </button>
+        </div>
+        <div className="p-4 space-y-5">
+          <Field label="Activity">
+            <input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="BJJ, Kickboxing, Running…"
+              maxLength={40}
+              className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-1 focus:ring-accent"
+            />
+          </Field>
+          <Field label="Days">
+            <div className="grid grid-cols-7 gap-1.5">
+              {DAY_LABELS.map((d, col) => {
+                const jsIdx = DAY_JS_INDEX[col];
+                const sel = days.includes(jsIdx);
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => toggleDay(jsIdx)}
+                    className={`py-2 rounded-md text-[10px] font-mono uppercase tracking-wider border ${
+                      sel
+                        ? "bg-accent text-accent-foreground border-accent"
+                        : "bg-secondary border-border text-muted-foreground"
+                    }`}
+                  >
+                    {d}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Start">
+              <input
+                type="time"
+                value={start}
+                onChange={(e) => setStart(e.target.value)}
+                className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-1 focus:ring-accent"
+              />
+            </Field>
+            <Field label="End">
+              <input
+                type="time"
+                value={end}
+                onChange={(e) => setEnd(e.target.value)}
+                className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-1 focus:ring-accent"
+              />
+            </Field>
+          </div>
+          <Field label="Location (optional)">
+            <input
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="Gracie Barra, Home gym…"
+              maxLength={60}
+              className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-1 focus:ring-accent"
+            />
+          </Field>
+          <button
+            onClick={save}
+            className="w-full py-3 rounded-xl bg-accent text-accent-foreground font-bold uppercase tracking-wide active:scale-[0.98] transition-transform"
+          >
+            {initial ? "Save changes" : "Add to schedule"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

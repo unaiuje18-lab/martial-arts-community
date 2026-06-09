@@ -157,6 +157,9 @@ export interface TrainingSession {
   effort: number; // 1-10
   notes?: string;
   completed: boolean;
+  activity?: string; // free-form label e.g. "Running", overrides `art` for display
+  stravaUrl?: string;
+  photoUrl?: string; // data URL or remote URL
 }
 
 const today = new Date();
