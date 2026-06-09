@@ -15,6 +15,8 @@ export const Route = createFileRoute("/duels")({
 });
 
 function DuelsPage() {
+  const userDuels = useStore((s) => s.userDuels);
+  const allDuels = [...userDuels, ...DUELS];
   return (
     <MobileShell>
       <div className="space-y-8 animate-snap-in">
@@ -25,7 +27,7 @@ function DuelsPage() {
         </header>
 
         <div className="space-y-8">
-          {DUELS.map((d) => (
+          {allDuels.map((d) => (
             <DuelCard key={d.id} duel={d} />
           ))}
         </div>
