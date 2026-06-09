@@ -28,6 +28,7 @@ export type Database = {
           id: string
           technique: string
           title: string
+          user_id: string | null
         }
         Insert: {
           a_handle: string
@@ -42,6 +43,7 @@ export type Database = {
           id?: string
           technique: string
           title: string
+          user_id?: string | null
         }
         Update: {
           a_handle?: string
@@ -56,6 +58,7 @@ export type Database = {
           id?: string
           technique?: string
           title?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -72,6 +75,7 @@ export type Database = {
           poster: string
           poster_path: string | null
           tags: string[]
+          user_id: string | null
           video: string
           video_path: string | null
         }
@@ -87,6 +91,7 @@ export type Database = {
           poster: string
           poster_path?: string | null
           tags?: string[]
+          user_id?: string | null
           video: string
           video_path?: string | null
         }
@@ -102,6 +107,7 @@ export type Database = {
           poster?: string
           poster_path?: string | null
           tags?: string[]
+          user_id?: string | null
           video?: string
           video_path?: string | null
         }
