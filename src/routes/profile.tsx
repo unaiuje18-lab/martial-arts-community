@@ -188,7 +188,7 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
   const [level, setLevel] = useState<string>(user?.level ?? "Intermediate");
   const [prefs, setPrefs] = useState<string[]>(user?.prefs ?? []);
   const [avatar, setAvatar] = useState<string | undefined>(user?.avatar);
-  const [ranks, setRanks] = useState<Record<string, { type: "belt" | "years"; value: string }>>(
+  const [ranks, setRanks] = useState<Record<string, { type: "belt" | "years"; value: string; system?: string }>>(
     user?.ranks ?? {},
   );
   const fileRef = useRef<HTMLInputElement>(null);
