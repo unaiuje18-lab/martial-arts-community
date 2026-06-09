@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useRef } from "react";
-import { Lock, Flame, Award, Pencil, X, Check, Camera } from "lucide-react";
+import { Lock, Flame, Award, Pencil, X, Check, Camera, Plus, Trash2 } from "lucide-react";
 import { MobileShell } from "@/components/MobileShell";
 import { ME, BADGES, SESSIONS, formatCount, ARTS, LEVELS, CONTENT_PREFS, BELT_SYSTEMS, hasBelts, type Art } from "@/lib/mock-data";
 import { auth, useUser } from "@/lib/auth";
@@ -82,28 +82,58 @@ function ProfilePage() {
 
         <p className="text-sm text-foreground/80 text-pretty">{bio}</p>
 
-        <div className="flex gap-2 flex-wrap">
-          {arts.map((a) => {
-            const r = ranks[a];
-            const sysList = BELT_SYSTEMS[a];
-            const sysLabel = sysList && sysList.length > 1
-              ? sysList.find((s) => s.id === r?.system)?.id?.toUpperCase()
-              : undefined;
-            const suffix = r?.value
-              ? r.type === "belt"
-                ? ` · ${r.value}${sysLabel ? ` (${sysLabel})` : ""}`
-                : ` · ${r.value}Y`
-              : "";
-            return (
-              <span
-                key={a}
-                className="px-2.5 py-1 bg-secondary border border-border rounded text-[10px] font-bold uppercase tracking-wide"
-              >
-                {a}
-                {suffix && <span className="text-accent">{suffix}</span>}
-              </span>
-            );
-          })}
+        <div className="space-y-2">
+          <div className="flex gap-2 flex-wrap">
+            {arts.map((a) => {
+              const r = ranks[a];
+              const sysList = BELT_SYSTEMS[a];
+              const sysLabel = sysList && sysList.length > 1
+                ? sysList.find((s) => s.id === r?.system)?.id?.toUpperCase()
+                : undefined;
+              const suffix = r?.value
+                ? r.type === "belt"
+                  ? ` · ${r.value}${sysLabel ? ` (${sysLabel})` : ""}`
+                  : ` · ${r.value}Y`
+                : "";
+              return (
+                <span
+                  key={a}
+                  className="px-2.5 py-1 bg-secondary border border-border rounded text-[10px] font-bold uppercase tracking-wide"
+                >
+                  {a}
+                  {suffix && <span className="text-accent">{suffix}</span>}
+                </span>
+              );
+            })}
+          </div>
+          {arts.some((a) => (ranks[a]?.history?.length ?? 0) > 0) && (
+            <div className="rounded-xl border border-border bg-card/50 p-3 space-y-2">
+              <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest">
+                Belt timeline
+              </p>
+              {arts.map((a) => {
+                const hist = ranks[a]?.history ?? [];
+                if (!hist.length) return null;
+                return (
+                  <div key={a} className="text-xs">
+                    <p className="font-bold uppercase tracking-wide text-[10px] text-muted-foreground mb-1">
+                      {a}
+                    </p>
+                    <ol className="relative border-l border-border ml-1.5 pl-3 space-y-1">
+                      {hist.map((h, i) => (
+                        <li key={i} className="flex items-baseline justify-between gap-2">
+                          <span className="font-bold">{h.belt}</span>
+                          <span className="font-mono text-[10px] text-muted-foreground">
+                            {formatYearMonth(h.date)}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Follow stats */}
@@ -192,7 +222,13 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
   const [level, setLevel] = useState<string>(user?.level ?? "Intermediate");
   const [prefs, setPrefs] = useState<string[]>(user?.prefs ?? []);
   const [avatar, setAvatar] = useState<string | undefined>(user?.avatar);
-  const [ranks, setRanks] = useState<Record<string, { type: "belt" | "years"; value: string; system?: string }>>(
+  type RankEntry = {
+    type: "belt" | "years";
+    value: string;
+    system?: string;
+    history?: { belt: string; date: string }[];
+  };
+  const [ranks, setRanks] = useState<Record<string, RankEntry>>(
     user?.ranks ?? {},
   );
   const fileRef = useRef<HTMLInputElement>(null);
@@ -210,6 +246,21 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
   };
 
   const save = () => {
+    // Validate ranks against active belt system; drop invalid values.
+    const cleanRanks: Record<string, RankEntry> = {};
+    for (const [art, r] of Object.entries(ranks)) {
+      const systems = BELT_SYSTEMS[art as Art];
+      if (systems) {
+        const sys = systems.find((s) => s.id === r.system) ?? systems[0];
+        const validValue = sys.belts.includes(r.value) ? r.value : "";
+        const validHistory = (r.history ?? []).filter((h) => sys.belts.includes(h.belt));
+        if (validValue || validHistory.length) {
+          cleanRanks[art] = { type: "belt", value: validValue, system: sys.id, history: validHistory };
+        }
+      } else if (r.value) {
+        cleanRanks[art] = { type: "years", value: r.value };
+      }
+    }
     auth.update({
       name: name.trim(),
       username: username.trim().replace(/\s/g, "_").toLowerCase(),
@@ -219,7 +270,7 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
       level,
       prefs,
       avatar,
-      ranks,
+      ranks: cleanRanks,
     });
     onClose();
   };
@@ -234,14 +285,39 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
   const setRankValue = (art: Art, value: string, system?: string) => {
     setRanks((prev) => ({
       ...prev,
-      [art]: { type: hasBelts(art) ? "belt" : "years", value, system },
+      [art]: {
+        ...(prev[art] ?? {}),
+        type: hasBelts(art) ? "belt" : "years",
+        value,
+        system,
+      },
     }));
   };
   const setRankSystem = (art: Art, system: string) => {
     setRanks((prev) => ({
       ...prev,
-      [art]: { type: "belt", value: "", system },
+      [art]: { type: "belt", value: "", system, history: [] },
     }));
+  };
+  const addHistoryEntry = (art: Art, belt: string, date: string) => {
+    if (!belt || !date) return;
+    setRanks((prev) => {
+      const cur = prev[art] ?? { type: "belt" as const, value: "" };
+      const hist = [...(cur.history ?? []), { belt, date }].sort((a, b) =>
+        a.date.localeCompare(b.date),
+      );
+      return { ...prev, [art]: { ...cur, history: hist } };
+    });
+  };
+  const removeHistoryEntry = (art: Art, idx: number) => {
+    setRanks((prev) => {
+      const cur = prev[art];
+      if (!cur?.history) return prev;
+      return {
+        ...prev,
+        [art]: { ...cur, history: cur.history.filter((_, i) => i !== idx) },
+      };
+    });
   };
 
   return (
@@ -427,25 +503,33 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
                   )}
 
                   {activeSystem ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {activeSystem.belts.map((b) => {
-                        const sel = current === b;
-                        return (
-                          <button
-                            key={b}
-                            type="button"
-                            onClick={() => setRankValue(a, sel ? "" : b, activeSystem.id)}
-                            className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border transition-colors ${
-                              sel
-                                ? "bg-accent text-accent-foreground border-accent"
-                                : "bg-secondary border-border text-muted-foreground"
-                            }`}
-                          >
-                            {b}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <>
+                      <div className="flex flex-wrap gap-1.5">
+                        {activeSystem.belts.map((b) => {
+                          const sel = current === b;
+                          return (
+                            <button
+                              key={b}
+                              type="button"
+                              onClick={() => setRankValue(a, sel ? "" : b, activeSystem.id)}
+                              className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border transition-colors ${
+                                sel
+                                  ? "bg-accent text-accent-foreground border-accent"
+                                  : "bg-secondary border-border text-muted-foreground"
+                              }`}
+                            >
+                              {b}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <BeltHistoryEditor
+                        belts={activeSystem.belts}
+                        history={rank?.history ?? []}
+                        onAdd={(belt, date) => addHistoryEntry(a, belt, date)}
+                        onRemove={(idx) => removeHistoryEntry(a, idx)}
+                      />
+                    </>
                   ) : (
                     <input
                       value={current}
@@ -508,4 +592,91 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       {children}
     </label>
   );
+}
+
+function BeltHistoryEditor({
+  belts,
+  history,
+  onAdd,
+  onRemove,
+}: {
+  belts: string[];
+  history: { belt: string; date: string }[];
+  onAdd: (belt: string, date: string) => void;
+  onRemove: (idx: number) => void;
+}) {
+  const [newBelt, setNewBelt] = useState<string>("");
+  const [newDate, setNewDate] = useState<string>("");
+
+  const add = () => {
+    if (!newBelt || !newDate) return;
+    if (!belts.includes(newBelt)) return;
+    onAdd(newBelt, newDate);
+    setNewBelt("");
+    setNewDate("");
+  };
+
+  return (
+    <div className="pt-2 border-t border-border space-y-2">
+      <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">
+        Belt history
+      </p>
+      {history.length > 0 && (
+        <ul className="space-y-1">
+          {history.map((h, i) => (
+            <li
+              key={`${h.belt}-${h.date}-${i}`}
+              className="flex items-center justify-between text-[11px] bg-secondary/60 border border-border rounded-md px-2 py-1"
+            >
+              <span className="font-bold uppercase tracking-wide">{h.belt}</span>
+              <span className="font-mono text-muted-foreground">{formatYearMonth(h.date)}</span>
+              <button
+                type="button"
+                onClick={() => onRemove(i)}
+                aria-label="Remove"
+                className="text-muted-foreground hover:text-destructive"
+              >
+                <Trash2 className="size-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex gap-1.5">
+        <select
+          value={newBelt}
+          onChange={(e) => setNewBelt(e.target.value)}
+          className="profile-input flex-1 py-2 text-xs"
+        >
+          <option value="">Belt…</option>
+          {belts.map((b) => (
+            <option key={b} value={b}>{b}</option>
+          ))}
+        </select>
+        <input
+          type="month"
+          value={newDate}
+          onChange={(e) => setNewDate(e.target.value)}
+          className="profile-input flex-1 py-2 text-xs"
+        />
+        <button
+          type="button"
+          onClick={add}
+          disabled={!newBelt || !newDate}
+          className="px-3 rounded-lg bg-accent text-accent-foreground disabled:opacity-40 disabled:cursor-not-allowed"
+          aria-label="Add belt history entry"
+        >
+          <Plus className="size-4" strokeWidth={2.5} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function formatYearMonth(ym: string): string {
+  // ym is YYYY-MM
+  const [y, m] = ym.split("-");
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const mi = Math.max(0, Math.min(11, Number(m) - 1));
+  return `${months[mi]} ${y}`;
 }
