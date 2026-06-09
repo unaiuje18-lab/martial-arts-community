@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Heart, MessageCircle, Bookmark, Share2, Volume2, VolumeX, Play, X, Send, RefreshCw, AlertTriangle, Inbox, WifiOff, Wifi } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { MobileShell } from "@/components/MobileShell";
-import { FEED, formatCount, type FeedPost } from "@/lib/mock-data";
+import { formatCount, type FeedPost } from "@/lib/mock-data";
 import { actions, useStore, fetchBackendFeed, applyBackendFeed, type BackendFeed } from "@/lib/store";
 import { Skeleton } from "@/components/ui/skeleton";
 import { reportLovableError } from "@/lib/lovable-error-reporting";
@@ -82,9 +82,9 @@ function FeedPage() {
     }
   }, [justReconnected, queryClient]);
 
-  const feed = [...userPosts, ...FEED];
+  const feed = userPosts;
   const [muted, setMuted] = useState(true);
-  const [activeId, setActiveId] = useState<string>(feed[0].id);
+  const [activeId, setActiveId] = useState<string>(feed[0]?.id ?? "");
   const [openComments, setOpenComments] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -108,7 +108,7 @@ function FeedPage() {
   }, [userPosts.length]);
 
   // First-paint loading: only when we have no fallback content to show.
-  const isInitialLoading = hydration.isPending && userPosts.length === 0 && FEED.length === 0;
+  const isInitialLoading = hydration.isPending && userPosts.length === 0;
   const hasError = !!hydration.error;
   const isEmpty = !hydration.isPending && feed.length === 0;
 

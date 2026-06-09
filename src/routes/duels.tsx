@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { MessageCircle, CheckCircle2 } from "lucide-react";
 import { MobileShell } from "@/components/MobileShell";
-import { DUELS, formatCount, type Duel } from "@/lib/mock-data";
+import { formatCount, type Duel } from "@/lib/mock-data";
 import { actions, useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/duels")({
@@ -16,7 +16,7 @@ export const Route = createFileRoute("/duels")({
 
 function DuelsPage() {
   const userDuels = useStore((s) => s.userDuels);
-  const allDuels = [...userDuels, ...DUELS];
+  const allDuels = userDuels;
   return (
     <MobileShell>
       <div className="space-y-8 animate-snap-in">
@@ -26,11 +26,17 @@ function DuelsPage() {
           <p className="text-sm text-muted-foreground">Pick the cleaner execution. Results update live.</p>
         </header>
 
+        {allDuels.length === 0 ? (
+          <div className="py-16 text-center text-sm text-muted-foreground">
+            No duels yet. Create one from the + button to challenge the community.
+          </div>
+        ) : (
         <div className="space-y-8">
           {allDuels.map((d) => (
             <DuelCard key={d.id} duel={d} />
           ))}
         </div>
+        )}
       </div>
     </MobileShell>
   );

@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { SESSIONS, GOALS, DUELS, FEED, type TrainingSession, type Goal, type FeedPost, type Duel, type Art } from "./mock-data";
+import type { TrainingSession, Goal, FeedPost, Duel, Art } from "./mock-data";
 import { supabase } from "@/integrations/supabase/client";
 
 // Database types are auto-generated and currently empty for these tables.
@@ -15,7 +15,7 @@ const db = supabase as unknown as {
   };
 };
 
-const KEY = "strive-state-v1";
+const KEY = "strive-state-v2";
 
 export interface Comment {
   id: string;
@@ -67,9 +67,9 @@ function seed(): State {
     saves: {},
     follows: {},
     votes: {},
-    voteCounts: Object.fromEntries(DUELS.map((d) => [d.id, { a: d.a.votes, b: d.b.votes }])),
-    likeCounts: Object.fromEntries(FEED.map((p) => [p.id, p.likes])),
-    commentCounts: Object.fromEntries(FEED.map((p) => [p.id, p.comments])),
+    voteCounts: {},
+    likeCounts: {},
+    commentCounts: {},
     comments: {},
     sessions: [],
     goals: [],
