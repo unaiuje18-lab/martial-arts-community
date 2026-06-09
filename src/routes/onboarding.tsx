@@ -110,12 +110,15 @@ function Onboarding() {
                 onChange={(e) => setBirthday(e.target.value)}
                 className="onboarding-input"
               />
-              {birthday && (
-                <span className="text-[10px] font-mono text-muted-foreground mt-1 block">
-                  {computeAge(birthday)} years old
-                </span>
-              )}
             </Field>
+            <div className="rounded-xl border border-border bg-secondary/40 px-4 py-3 flex items-baseline justify-between">
+              <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
+                Age (auto)
+              </span>
+              <span className="font-display text-2xl tracking-tight text-accent">
+                {birthday ? computeAge(birthday) : "—"}
+              </span>
+            </div>
           </div>
         )}
 
