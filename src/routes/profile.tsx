@@ -1,8 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
-import { Settings, Lock, Flame, Award, Pencil, X, Check } from "lucide-react";
+import { useState, useRef } from "react";
+import { Lock, Flame, Award, Pencil, X, Check, Camera } from "lucide-react";
 import { MobileShell } from "@/components/MobileShell";
-import { ME, BADGES, SESSIONS, formatCount, ARTS, type Art } from "@/lib/mock-data";
+import { ME, BADGES, SESSIONS, formatCount, ARTS, LEVELS, CONTENT_PREFS, type Art } from "@/lib/mock-data";
 import { auth, useUser } from "@/lib/auth";
 import {
   Sheet,
@@ -171,6 +171,23 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
   const [username, setUsername] = useState(user?.username ?? ME.username);
   const [bio, setBio] = useState(user?.bio ?? ME.bio);
   const [arts, setArts] = useState<Art[]>(((user?.arts as Art[]) ?? ME.arts));
+  const [age, setAge] = useState(user?.age ?? "");
+  const [level, setLevel] = useState<string>(user?.level ?? "Intermediate");
+  const [prefs, setPrefs] = useState<string[]>(user?.prefs ?? []);
+  const [avatar, setAvatar] = useState<string | undefined>(user?.avatar);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const onPickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.size > 3 * 1024 * 1024) {
+      alert("Image too large (max 3MB).");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setAvatar(reader.result as string);
+    reader.readAsDataURL(f);
+  };
 
   const save = () => {
     auth.update({
@@ -178,6 +195,10 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
       username: username.trim().replace(/\s/g, "_").toLowerCase(),
       bio: bio.trim(),
       arts,
+      age: age.trim(),
+      level,
+      prefs,
+      avatar,
     });
     onClose();
   };
@@ -185,9 +206,51 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
   const toggleArt = (a: Art) => {
     setArts((prev) => (prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a]));
   };
+  const togglePref = (p: string) => {
+    setPrefs((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
+  };
 
   return (
     <div className="mt-6 space-y-5 pb-6">
+      <div className="flex items-center gap-4">
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          className="relative size-20 rounded-2xl overflow-hidden border-4 border-white/5 bg-secondary group"
+        >
+          {avatar ? (
+            <img src={avatar} alt="Avatar preview" className="size-full object-cover" />
+          ) : (
+            <div className="size-full flex items-center justify-center text-muted-foreground">
+              <Camera className="size-6" />
+            </div>
+          )}
+          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+            <Camera className="size-5 text-white" />
+          </div>
+        </button>
+        <div className="flex-1">
+          <p className="text-sm font-semibold">Profile Photo</p>
+          <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Tap image to upload (max 3MB)</p>
+          {avatar && (
+            <button
+              type="button"
+              onClick={() => setAvatar(undefined)}
+              className="mt-2 text-[10px] font-mono uppercase tracking-wider text-muted-foreground underline"
+            >
+              Remove
+            </button>
+          )}
+        </div>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={onPickFile}
+        />
+      </div>
+
       <Field label="Name">
         <input
           value={name}
@@ -202,6 +265,15 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
           className="profile-input"
         />
       </Field>
+      <Field label="Age">
+        <input
+          value={age}
+          onChange={(e) => setAge(e.target.value.replace(/\D/g, "").slice(0, 3))}
+          inputMode="numeric"
+          placeholder="28"
+          className="profile-input"
+        />
+      </Field>
       <Field label="Bio">
         <textarea
           value={bio}
@@ -210,6 +282,28 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
           className="profile-input resize-none"
         />
       </Field>
+      <div className="space-y-2">
+        <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">Skill Level</span>
+        <div className="grid grid-cols-3 gap-2">
+          {LEVELS.map((l) => {
+            const sel = level === l;
+            return (
+              <button
+                key={l}
+                type="button"
+                onClick={() => setLevel(l)}
+                className={`py-2.5 rounded-lg text-xs font-bold uppercase tracking-wide border transition-colors ${
+                  sel
+                    ? "bg-accent text-accent-foreground border-accent"
+                    : "bg-card border-border text-muted-foreground"
+                }`}
+              >
+                {l}
+              </button>
+            );
+          })}
+        </div>
+      </div>
       <div className="space-y-2">
         <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">Disciplines</span>
         <div className="flex flex-wrap gap-2">
@@ -227,6 +321,28 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
                 }`}
               >
                 {a}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="space-y-2">
+        <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">Content Preferences</span>
+        <div className="flex flex-wrap gap-2">
+          {CONTENT_PREFS.map((p) => {
+            const sel = prefs.includes(p);
+            return (
+              <button
+                key={p}
+                type="button"
+                onClick={() => togglePref(p)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide border transition-colors ${
+                  sel
+                    ? "bg-accent text-accent-foreground border-accent"
+                    : "bg-card border-border text-muted-foreground"
+                }`}
+              >
+                {p}
               </button>
             );
           })}
