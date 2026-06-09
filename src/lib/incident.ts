@@ -2,16 +2,21 @@
 // recoverable UI surfaces (feed banner, toasts). Keeps a small in-memory ring
 // buffer so the user can quote an id when reporting a problem.
 
+import { getMetrics, type PerfSnapshot } from "./metrics";
+
 export interface IncidentRecord {
   id: string;
   at: number;
   message: string;
   context: Record<string, unknown>;
   stack?: string;
+  route?: string;
+  metrics?: PerfSnapshot;
 }
 
 const MAX = 25;
 const recent: IncidentRecord[] = [];
+const listeners = new Set<() => void>();
 
 function newId(): string {
   // Short, human-quotable id. INC-XXXXXX
@@ -36,15 +41,30 @@ export function logIncident(
     message: err.message || "Unknown error",
     stack: err.stack,
     context,
+    route: typeof window !== "undefined" ? window.location.pathname : undefined,
+    metrics: typeof window !== "undefined" ? getMetrics() : undefined,
   };
   recent.unshift(record);
   if (recent.length > MAX) recent.length = MAX;
   if (typeof console !== "undefined") {
-    console.error(`[${record.id}]`, err, context);
+    console.error(`[${record.id}]`, err, { ...context, metrics: record.metrics });
   }
+  listeners.forEach((l) => l());
   return record;
 }
 
 export function getRecentIncidents(): IncidentRecord[] {
   return [...recent];
+}
+
+export function subscribeIncidents(l: () => void): () => void {
+  listeners.add(l);
+  return () => {
+    listeners.delete(l);
+  };
+}
+
+export function clearIncidents() {
+  recent.length = 0;
+  listeners.forEach((l) => l());
 }
