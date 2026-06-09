@@ -128,9 +128,19 @@ export const actions = {
       commentCounts: { ...s.commentCounts, [postId]: (s.commentCounts[postId] ?? 0) + 1 },
     }));
   },
-  addSession(session: Omit<TrainingSession, "id" | "completed">) {
-    const full: TrainingSession = { ...session, id: crypto.randomUUID(), completed: true };
+  addSession(session: Omit<TrainingSession, "id" | "completed"> & { completed?: boolean }) {
+    const full: TrainingSession = {
+      ...session,
+      id: crypto.randomUUID(),
+      completed: session.completed ?? true,
+    };
     set((s) => ({ ...s, sessions: [full, ...s.sessions] }));
+  },
+  toggleSessionComplete(id: string) {
+    set((s) => ({
+      ...s,
+      sessions: s.sessions.map((x) => (x.id === id ? { ...x, completed: !x.completed } : x)),
+    }));
   },
   deleteSession(id: string) {
     set((s) => ({ ...s, sessions: s.sessions.filter((x) => x.id !== id) }));

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { MobileShell } from "@/components/MobileShell";
 import { ARTS, LEVELS, CONTENT_PREFS, type Art } from "@/lib/mock-data";
+import { auth } from "@/lib/auth";
 
 export const Route = createFileRoute("/onboarding")({
   head: () => ({
@@ -28,7 +29,17 @@ function Onboarding() {
 
   const next = () => {
     if (step < steps.length - 1) setStep((s) => s + 1);
-    else navigate({ to: "/" });
+    else {
+      auth.signIn({
+        name,
+        username,
+        age,
+        arts,
+        level: level ?? undefined,
+        prefs,
+      });
+      navigate({ to: "/" });
+    }
   };
 
   const canContinue =
