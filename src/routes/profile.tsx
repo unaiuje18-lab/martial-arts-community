@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState, useRef } from "react";
 import { Lock, Flame, Award, Pencil, X, Check, Camera } from "lucide-react";
 import { MobileShell } from "@/components/MobileShell";
-import { ME, BADGES, SESSIONS, formatCount, ARTS, LEVELS, CONTENT_PREFS, type Art } from "@/lib/mock-data";
+import { ME, BADGES, SESSIONS, formatCount, ARTS, LEVELS, CONTENT_PREFS, BELTS, hasBelts, type Art } from "@/lib/mock-data";
 import { auth, useUser } from "@/lib/auth";
 import {
   Sheet,
@@ -31,6 +31,7 @@ function ProfilePage() {
   const bio = user?.bio ?? ME.bio;
   const avatar = user?.avatar ?? ME.avatar;
   const arts = (user?.arts as Art[]) ?? ME.arts;
+  const ranks = user?.ranks ?? {};
 
   const xpPct = Math.round((ME.xp / ME.xpToNext) * 100);
 
@@ -82,11 +83,23 @@ function ProfilePage() {
         <p className="text-sm text-foreground/80 text-pretty">{bio}</p>
 
         <div className="flex gap-2 flex-wrap">
-          {arts.map((a) => (
-            <span key={a} className="px-2.5 py-1 bg-secondary border border-border rounded text-[10px] font-bold uppercase tracking-wide">
-              {a}
-            </span>
-          ))}
+          {arts.map((a) => {
+            const r = ranks[a];
+            const suffix = r?.value
+              ? r.type === "belt"
+                ? ` · ${r.value} BELT`
+                : ` · ${r.value}Y`
+              : "";
+            return (
+              <span
+                key={a}
+                className="px-2.5 py-1 bg-secondary border border-border rounded text-[10px] font-bold uppercase tracking-wide"
+              >
+                {a}
+                {suffix && <span className="text-accent">{suffix}</span>}
+              </span>
+            );
+          })}
         </div>
 
         {/* Follow stats */}
