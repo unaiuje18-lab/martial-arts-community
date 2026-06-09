@@ -82,28 +82,58 @@ function ProfilePage() {
 
         <p className="text-sm text-foreground/80 text-pretty">{bio}</p>
 
-        <div className="flex gap-2 flex-wrap">
-          {arts.map((a) => {
-            const r = ranks[a];
-            const sysList = BELT_SYSTEMS[a];
-            const sysLabel = sysList && sysList.length > 1
-              ? sysList.find((s) => s.id === r?.system)?.id?.toUpperCase()
-              : undefined;
-            const suffix = r?.value
-              ? r.type === "belt"
-                ? ` · ${r.value}${sysLabel ? ` (${sysLabel})` : ""}`
-                : ` · ${r.value}Y`
-              : "";
-            return (
-              <span
-                key={a}
-                className="px-2.5 py-1 bg-secondary border border-border rounded text-[10px] font-bold uppercase tracking-wide"
-              >
-                {a}
-                {suffix && <span className="text-accent">{suffix}</span>}
-              </span>
-            );
-          })}
+        <div className="space-y-2">
+          <div className="flex gap-2 flex-wrap">
+            {arts.map((a) => {
+              const r = ranks[a];
+              const sysList = BELT_SYSTEMS[a];
+              const sysLabel = sysList && sysList.length > 1
+                ? sysList.find((s) => s.id === r?.system)?.id?.toUpperCase()
+                : undefined;
+              const suffix = r?.value
+                ? r.type === "belt"
+                  ? ` · ${r.value}${sysLabel ? ` (${sysLabel})` : ""}`
+                  : ` · ${r.value}Y`
+                : "";
+              return (
+                <span
+                  key={a}
+                  className="px-2.5 py-1 bg-secondary border border-border rounded text-[10px] font-bold uppercase tracking-wide"
+                >
+                  {a}
+                  {suffix && <span className="text-accent">{suffix}</span>}
+                </span>
+              );
+            })}
+          </div>
+          {arts.some((a) => (ranks[a]?.history?.length ?? 0) > 0) && (
+            <div className="rounded-xl border border-border bg-card/50 p-3 space-y-2">
+              <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest">
+                Belt timeline
+              </p>
+              {arts.map((a) => {
+                const hist = ranks[a]?.history ?? [];
+                if (!hist.length) return null;
+                return (
+                  <div key={a} className="text-xs">
+                    <p className="font-bold uppercase tracking-wide text-[10px] text-muted-foreground mb-1">
+                      {a}
+                    </p>
+                    <ol className="relative border-l border-border ml-1.5 pl-3 space-y-1">
+                      {hist.map((h, i) => (
+                        <li key={i} className="flex items-baseline justify-between gap-2">
+                          <span className="font-bold">{h.belt}</span>
+                          <span className="font-mono text-[10px] text-muted-foreground">
+                            {formatYearMonth(h.date)}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Follow stats */}
