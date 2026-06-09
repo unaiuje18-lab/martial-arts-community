@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useRef } from "react";
-import { Lock, Flame, Award, Pencil, X, Check, Camera, Plus, Trash2 } from "lucide-react";
+import { Lock, Flame, Award, Pencil, X, Check, Camera, Plus, Trash2, Download } from "lucide-react";
 import { MobileShell } from "@/components/MobileShell";
 import { ME, BADGES, SESSIONS, formatCount, ARTS, LEVELS, CONTENT_PREFS, BELT_SYSTEMS, hasBelts, type Art } from "@/lib/mock-data";
 import { auth, useUser } from "@/lib/auth";
@@ -11,6 +11,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
+import { jsPDF } from "jspdf";
 
 export const Route = createFileRoute("/profile")({
   head: () => ({
@@ -107,20 +108,37 @@ function ProfilePage() {
             })}
           </div>
           {arts.some((a) => (ranks[a]?.history?.length ?? 0) > 0) && (
-            <div className="rounded-xl border border-border bg-card/50 p-3 space-y-2">
-              <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest">
-                Belt timeline
-              </p>
+            <div className="rounded-xl border border-border bg-card/50 p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest">
+                  Belt timeline
+                </p>
+                <button
+                  type="button"
+                  onClick={() => exportBeltTimelinePdf(name, arts, ranks)}
+                  className="flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider text-accent hover:underline"
+                >
+                  <Download className="size-3" /> PDF
+                </button>
+              </div>
               {arts.map((a) => {
                 const hist = ranks[a]?.history ?? [];
                 if (!hist.length) return null;
+                const sorted = [...hist].sort((x, y) => x.date.localeCompare(y.date));
+                const first = sorted[0];
+                const last = sorted[sorted.length - 1];
                 return (
-                  <div key={a} className="text-xs">
-                    <p className="font-bold uppercase tracking-wide text-[10px] text-muted-foreground mb-1">
+                  <div key={a} className="text-xs space-y-2">
+                    <p className="font-bold uppercase tracking-wide text-[10px] text-muted-foreground">
                       {a}
                     </p>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <SummaryCell label="Current" value={last.belt} sub={formatYearMonth(last.date)} accent />
+                      <SummaryCell label="First" value={first.belt} sub={formatYearMonth(first.date)} />
+                      <SummaryCell label="Promotions" value={String(Math.max(0, sorted.length - 1))} sub={`${sorted.length} entries`} />
+                    </div>
                     <ol className="relative border-l border-border ml-1.5 pl-3 space-y-1">
-                      {hist.map((h, i) => (
+                      {sorted.map((h, i) => (
                         <li key={i} className="flex items-baseline justify-between gap-2">
                           <span className="font-bold">{h.belt}</span>
                           <span className="font-mono text-[10px] text-muted-foreground">
@@ -607,10 +625,39 @@ function BeltHistoryEditor({
 }) {
   const [newBelt, setNewBelt] = useState<string>("");
   const [newDate, setNewDate] = useState<string>("");
+  const [err, setErr] = useState<string>("");
+
+  // Sorted ascending by date.
+  const sorted = [...history].sort((a, b) => a.date.localeCompare(b.date));
+  const usedBelts = new Set(history.map((h) => h.belt));
+  const usedDates = new Set(history.map((h) => h.date));
+  const last = sorted[sorted.length - 1];
+  const lastBeltIdx = last ? belts.indexOf(last.belt) : -1;
 
   const add = () => {
+    setErr("");
     if (!newBelt || !newDate) return;
-    if (!belts.includes(newBelt)) return;
+    if (!belts.includes(newBelt)) {
+      setErr("Belt not valid for this system.");
+      return;
+    }
+    if (usedBelts.has(newBelt)) {
+      setErr(`${newBelt} is already in the history.`);
+      return;
+    }
+    if (usedDates.has(newDate)) {
+      setErr("Another belt already uses that month/year.");
+      return;
+    }
+    if (last && newDate <= last.date) {
+      setErr(`Date must be after ${formatYearMonth(last.date)}.`);
+      return;
+    }
+    const newIdx = belts.indexOf(newBelt);
+    if (lastBeltIdx >= 0 && newIdx < lastBeltIdx) {
+      setErr(`Cannot demote: current rank is ${last.belt}.`);
+      return;
+    }
     onAdd(newBelt, newDate);
     setNewBelt("");
     setNewDate("");
@@ -623,7 +670,7 @@ function BeltHistoryEditor({
       </p>
       {history.length > 0 && (
         <ul className="space-y-1">
-          {history.map((h, i) => (
+          {sorted.map((h, i) => (
             <li
               key={`${h.belt}-${h.date}-${i}`}
               className="flex items-center justify-between text-[11px] bg-secondary/60 border border-border rounded-md px-2 py-1"
@@ -632,7 +679,7 @@ function BeltHistoryEditor({
               <span className="font-mono text-muted-foreground">{formatYearMonth(h.date)}</span>
               <button
                 type="button"
-                onClick={() => onRemove(i)}
+                onClick={() => onRemove(history.findIndex((x) => x.belt === h.belt && x.date === h.date))}
                 aria-label="Remove"
                 className="text-muted-foreground hover:text-destructive"
               >
@@ -649,14 +696,22 @@ function BeltHistoryEditor({
           className="profile-input flex-1 py-2 text-xs"
         >
           <option value="">Belt…</option>
-          {belts.map((b) => (
-            <option key={b} value={b}>{b}</option>
-          ))}
+          {belts.map((b, i) => {
+            const dupBelt = usedBelts.has(b);
+            const demote = lastBeltIdx >= 0 && i < lastBeltIdx;
+            const disabled = dupBelt || demote;
+            return (
+              <option key={b} value={b} disabled={disabled}>
+                {b}{dupBelt ? " (registered)" : demote ? " (lower rank)" : ""}
+              </option>
+            );
+          })}
         </select>
         <input
           type="month"
           value={newDate}
           onChange={(e) => setNewDate(e.target.value)}
+          min={last?.date}
           className="profile-input flex-1 py-2 text-xs"
         />
         <button
@@ -669,6 +724,7 @@ function BeltHistoryEditor({
           <Plus className="size-4" strokeWidth={2.5} />
         </button>
       </div>
+      {err && <p className="text-[10px] text-destructive">{err}</p>}
     </div>
   );
 }
@@ -679,4 +735,97 @@ function formatYearMonth(ym: string): string {
   const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const mi = Math.max(0, Math.min(11, Number(m) - 1));
   return `${months[mi]} ${y}`;
+}
+
+function SummaryCell({
+  label,
+  value,
+  sub,
+  accent,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  accent?: boolean;
+}) {
+  return (
+    <div className="bg-secondary/60 border border-border rounded-lg p-2">
+      <p className="text-[8px] font-mono uppercase tracking-widest text-muted-foreground">{label}</p>
+      <p className={`text-[11px] font-bold uppercase leading-tight ${accent ? "text-accent" : ""}`}>{value}</p>
+      {sub && <p className="text-[9px] font-mono text-muted-foreground mt-0.5">{sub}</p>}
+    </div>
+  );
+}
+
+type RanksMap = Record<
+  string,
+  { type: "belt" | "years"; value: string; system?: string; history?: { belt: string; date: string }[] }
+>;
+
+function exportBeltTimelinePdf(name: string, arts: Art[], ranks: RanksMap) {
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const margin = 48;
+  const pageW = doc.internal.pageSize.getWidth();
+  let y = margin;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(22);
+  doc.text("STRIVE — Belt Timeline", margin, y);
+  y += 22;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(11);
+  doc.setTextColor(120);
+  doc.text(name || "Fighter", margin, y);
+  y += 24;
+  doc.setTextColor(0);
+
+  const anyHistory = arts.some((a) => (ranks[a]?.history?.length ?? 0) > 0);
+  if (!anyHistory) {
+    doc.text("No belt history recorded yet.", margin, y);
+  } else {
+    for (const a of arts) {
+      const hist = ranks[a]?.history ?? [];
+      if (!hist.length) continue;
+      if (y > 760) { doc.addPage(); y = margin; }
+      const sorted = [...hist].sort((x, z) => x.date.localeCompare(z.date));
+      const first = sorted[0];
+      const last = sorted[sorted.length - 1];
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.text(String(a).toUpperCase(), margin, y);
+      y += 16;
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(90);
+      doc.text(
+        `Current: ${last.belt} (${formatYearMonth(last.date)})   ·   First: ${first.belt} (${formatYearMonth(first.date)})   ·   Promotions: ${Math.max(0, sorted.length - 1)}`,
+        margin,
+        y,
+      );
+      y += 16;
+      doc.setTextColor(0);
+
+      doc.setFontSize(11);
+      for (const h of sorted) {
+        if (y > 780) { doc.addPage(); y = margin; }
+        doc.text(`•  ${h.belt}`, margin + 8, y);
+        doc.text(formatYearMonth(h.date), pageW - margin, y, { align: "right" });
+        y += 14;
+      }
+      y += 12;
+    }
+  }
+
+  doc.setFontSize(8);
+  doc.setTextColor(150);
+  doc.text(
+    `Generated ${new Date().toLocaleDateString()} · strive`,
+    margin,
+    doc.internal.pageSize.getHeight() - 24,
+  );
+
+  const safe = (name || "fighter").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  doc.save(`${safe}-belt-timeline.pdf`);
 }
