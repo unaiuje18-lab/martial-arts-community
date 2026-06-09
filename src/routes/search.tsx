@@ -104,11 +104,3 @@ function Chip({ active, onClick, label }: { active: boolean; onClick: () => void
   );
 }
 
-function SectionLabel({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-      {icon}
-      {children}
-    </div>
-  );
-}
