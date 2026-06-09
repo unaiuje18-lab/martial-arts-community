@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Upload,
   Swords,
@@ -23,6 +23,8 @@ import {
   ImagePlus,
   Trash2,
   Loader2,
+  Crop,
+  Scissors,
 } from "lucide-react";
 import { toast } from "sonner";
 import { MobileShell } from "@/components/MobileShell";
@@ -36,6 +38,7 @@ import {
 import { ARTS, LEVELS, type Art } from "@/lib/mock-data";
 import { actions as storeActions } from "@/lib/store";
 import { useUser } from "@/lib/auth";
+import { uploadMedia, type UploadResult } from "@/lib/media-upload";
 
 export const Route = createFileRoute("/create")({
   head: () => ({
@@ -49,11 +52,11 @@ export const Route = createFileRoute("/create")({
 
 type ActionKey = "video" | "duel" | "training" | "goal" | "achievement";
 
-// ---- Local persistence helpers ----
-const MAX_VIDEO_MB = 12;
-const MAX_IMAGE_MB = 3;
+// ---- Upload limits ----
+const MAX_VIDEO_MB = 100;
+const MAX_IMAGE_MB = 8;
 
-function fileToDataUrl(file: File): Promise<string> {
+function fileToDataUrl(file: Blob): Promise<string> {
   return new Promise((res, rej) => {
     const r = new FileReader();
     r.onload = () => res(r.result as string);
@@ -62,46 +65,50 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
-function generateVideoPoster(videoSrc: string): Promise<string> {
+/** Capture a 9:16 cover from a loaded <video> at the given yOffset (0..1). */
+function captureCover(video: HTMLVideoElement, yOffset: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
-    const v = document.createElement("video");
-    v.preload = "metadata";
-    v.muted = true;
-    v.playsInline = true;
-    v.crossOrigin = "anonymous";
-    v.src = videoSrc;
-    const cleanup = () => {
-      v.removeAttribute("src");
-      v.load();
-    };
-    v.onloadedmetadata = () => {
-      try {
-        v.currentTime = Math.min(0.5, (v.duration || 1) / 4);
-      } catch {
-        reject(new Error("seek-fail"));
-      }
-    };
-    v.onseeked = () => {
-      try {
-        const c = document.createElement("canvas");
-        const w = (c.width = Math.min(720, v.videoWidth || 720));
-        const h = (c.height = Math.round(w * ((v.videoHeight || 1280) / (v.videoWidth || 720))));
-        const ctx = c.getContext("2d");
-        if (!ctx) throw new Error("no-ctx");
-        ctx.drawImage(v, 0, 0, w, h);
-        const url = c.toDataURL("image/jpeg", 0.7);
-        cleanup();
-        resolve(url);
-      } catch (e) {
-        cleanup();
-        reject(e);
-      }
-    };
-    v.onerror = () => {
-      cleanup();
-      reject(new Error("video-load-fail"));
-    };
+    try {
+      const targetW = 720;
+      const targetH = 1280;
+      const c = document.createElement("canvas");
+      c.width = targetW;
+      c.height = targetH;
+      const ctx = c.getContext("2d");
+      if (!ctx) throw new Error("no-ctx");
+      const vw = video.videoWidth || targetW;
+      const vh = video.videoHeight || targetH;
+      const scale = Math.max(targetW / vw, targetH / vh);
+      const drawW = vw * scale;
+      const drawH = vh * scale;
+      const dx = (targetW - drawW) / 2;
+      const extraY = drawH - targetH;
+      const dy = -(yOffset * extraY);
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, targetW, targetH);
+      ctx.drawImage(video, dx, dy, drawW, drawH);
+      c.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/jpeg", 0.85);
+    } catch (e) {
+      reject(e);
+    }
   });
+}
+
+function UploadProgressBar({ progress, label }: { progress: number; label: string }) {
+  const pct = Math.round(progress * 100);
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-widest">
+        <span className="text-muted-foreground flex items-center gap-1.5">
+          <Loader2 className="size-3 animate-spin" /> {label}
+        </span>
+        <span className="text-accent">{pct}%</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+        <div className="h-full bg-accent transition-all" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
 }
 
 const ACTION_LIST: { key: ActionKey; icon: typeof Upload; title: string; desc: string }[] = [
