@@ -563,3 +563,90 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     </label>
   );
 }
+
+function BeltHistoryEditor({
+  belts,
+  history,
+  onAdd,
+  onRemove,
+}: {
+  belts: string[];
+  history: { belt: string; date: string }[];
+  onAdd: (belt: string, date: string) => void;
+  onRemove: (idx: number) => void;
+}) {
+  const [newBelt, setNewBelt] = useState<string>("");
+  const [newDate, setNewDate] = useState<string>("");
+
+  const add = () => {
+    if (!newBelt || !newDate) return;
+    if (!belts.includes(newBelt)) return;
+    onAdd(newBelt, newDate);
+    setNewBelt("");
+    setNewDate("");
+  };
+
+  return (
+    <div className="pt-2 border-t border-border space-y-2">
+      <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">
+        Belt history
+      </p>
+      {history.length > 0 && (
+        <ul className="space-y-1">
+          {history.map((h, i) => (
+            <li
+              key={`${h.belt}-${h.date}-${i}`}
+              className="flex items-center justify-between text-[11px] bg-secondary/60 border border-border rounded-md px-2 py-1"
+            >
+              <span className="font-bold uppercase tracking-wide">{h.belt}</span>
+              <span className="font-mono text-muted-foreground">{formatYearMonth(h.date)}</span>
+              <button
+                type="button"
+                onClick={() => onRemove(i)}
+                aria-label="Remove"
+                className="text-muted-foreground hover:text-destructive"
+              >
+                <Trash2 className="size-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex gap-1.5">
+        <select
+          value={newBelt}
+          onChange={(e) => setNewBelt(e.target.value)}
+          className="profile-input flex-1 py-2 text-xs"
+        >
+          <option value="">Belt…</option>
+          {belts.map((b) => (
+            <option key={b} value={b}>{b}</option>
+          ))}
+        </select>
+        <input
+          type="month"
+          value={newDate}
+          onChange={(e) => setNewDate(e.target.value)}
+          className="profile-input flex-1 py-2 text-xs"
+        />
+        <button
+          type="button"
+          onClick={add}
+          disabled={!newBelt || !newDate}
+          className="px-3 rounded-lg bg-accent text-accent-foreground disabled:opacity-40 disabled:cursor-not-allowed"
+          aria-label="Add belt history entry"
+        >
+          <Plus className="size-4" strokeWidth={2.5} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function formatYearMonth(ym: string): string {
+  // ym is YYYY-MM
+  const [y, m] = ym.split("-");
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const mi = Math.max(0, Math.min(11, Number(m) - 1));
+  return `${months[mi]} ${y}`;
+}
