@@ -7,10 +7,10 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
-import { reportLovableError } from "../lib/lovable-error-reporting";
+import { reportLovableError, installGlobalErrorHandlers } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
 
 function NotFoundComponent() {
@@ -38,8 +38,10 @@ function NotFoundComponent() {
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
+  const [incidentId, setIncidentId] = useState<string | null>(null);
   useEffect(() => {
-    reportLovableError(error, { boundary: "tanstack_root_error_component" });
+    const id = reportLovableError(error, { boundary: "tanstack_root_error_component" });
+    setIncidentId(id);
   }, [error]);
 
   return (
@@ -51,6 +53,11 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
         <p className="mt-2 text-sm text-muted-foreground">
           Something went wrong on our end. You can try refreshing or head back home.
         </p>
+        {incidentId && (
+          <p className="mt-3 text-xs font-mono text-muted-foreground">
+            Incident ID: <span className="text-foreground">{incidentId}</span>
+          </p>
+        )}
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => {
@@ -122,6 +129,10 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
+  useEffect(() => {
+    installGlobalErrorHandlers();
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
