@@ -188,6 +188,9 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
   const [level, setLevel] = useState<string>(user?.level ?? "Intermediate");
   const [prefs, setPrefs] = useState<string[]>(user?.prefs ?? []);
   const [avatar, setAvatar] = useState<string | undefined>(user?.avatar);
+  const [ranks, setRanks] = useState<Record<string, { type: "belt" | "years"; value: string }>>(
+    user?.ranks ?? {},
+  );
   const fileRef = useRef<HTMLInputElement>(null);
 
   const onPickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -212,6 +215,7 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
       level,
       prefs,
       avatar,
+      ranks,
     });
     onClose();
   };
@@ -221,6 +225,13 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
   };
   const togglePref = (p: string) => {
     setPrefs((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
+  };
+
+  const setRankValue = (art: Art, value: string) => {
+    setRanks((prev) => ({
+      ...prev,
+      [art]: { type: hasBelts(art) ? "belt" : "years", value },
+    }));
   };
 
   return (
@@ -361,6 +372,62 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
           })}
         </div>
       </div>
+
+      {arts.length > 0 && (
+        <div className="space-y-3">
+          <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
+            Rank per Discipline
+          </span>
+          <div className="space-y-3">
+            {arts.map((a) => {
+              const belts = BELTS[a];
+              const current = ranks[a]?.value ?? "";
+              return (
+                <div key={a} className="bg-card border border-border rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-bold uppercase tracking-wide">{a}</p>
+                    <p className="text-[9px] font-mono text-muted-foreground uppercase">
+                      {belts ? "Belt" : "Years experience"}
+                    </p>
+                  </div>
+                  {belts ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {belts.map((b) => {
+                        const sel = current === b;
+                        return (
+                          <button
+                            key={b}
+                            type="button"
+                            onClick={() => setRankValue(a, sel ? "" : b)}
+                            className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border transition-colors ${
+                              sel
+                                ? "bg-accent text-accent-foreground border-accent"
+                                : "bg-secondary border-border text-muted-foreground"
+                            }`}
+                          >
+                            {b}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <input
+                      value={current}
+                      onChange={(e) =>
+                        setRankValue(a, e.target.value.replace(/\D/g, "").slice(0, 2))
+                      }
+                      inputMode="numeric"
+                      placeholder="e.g. 3"
+                      className="profile-input"
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="flex gap-3 pt-2">
         <button
           onClick={onClose}
