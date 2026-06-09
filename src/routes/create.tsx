@@ -615,22 +615,50 @@ function DuelForm({ onClose }: { onClose: () => void }) {
   const [aPoster, setAPoster] = useState("");
   const [bHandle, setBHandle] = useState("");
   const [bPoster, setBPoster] = useState("");
+  const aRef = useRef<HTMLInputElement>(null);
+  const bRef = useRef<HTMLInputElement>(null);
+
+  const pickImage = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    setter: (s: string) => void,
+  ) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (!f.type.startsWith("image/")) {
+      toast.error("That file is not an image");
+      return;
+    }
+    const mb = f.size / (1024 * 1024);
+    if (mb > MAX_IMAGE_MB) {
+      toast.error(`Image too large (${mb.toFixed(1)}MB). Max ${MAX_IMAGE_MB}MB.`);
+      return;
+    }
+    try {
+      setter(await fileToDataUrl(f));
+    } catch {
+      toast.error("Could not read that image");
+    }
+  };
 
   const valid = !!title.trim() && !!technique.trim() && !!aHandle && !!bHandle;
 
   const submit = () => {
     if (!valid) return;
     const fallback = "https://images.unsplash.com/photo-1517438476312-10d79c077509?w=800";
-    storeActions.addDuel({
-      title: title.trim(),
-      technique: technique.trim(),
-      aHandle,
-      bHandle,
-      aPoster: aPoster || fallback,
-      bPoster: bPoster || fallback,
-    });
-    toast.success("Duel started — voting is live");
-    onClose();
+    try {
+      storeActions.addDuel({
+        title: title.trim(),
+        technique: technique.trim(),
+        aHandle,
+        bHandle,
+        aPoster: aPoster || fallback,
+        bPoster: bPoster || fallback,
+      });
+      toast.success("Duel started — voting is live");
+      onClose();
+    } catch {
+      toast.error("Could not save — try smaller images");
+    }
   };
 
   return (
@@ -656,12 +684,14 @@ function DuelForm({ onClose }: { onClose: () => void }) {
         <div className="space-y-2">
           <p className="text-[10px] font-mono text-accent uppercase tracking-widest">Fighter A</p>
           <input value={aHandle} onChange={(e) => setAHandle(e.target.value)} placeholder="@handle" className="profile-input" />
-          <input value={aPoster} onChange={(e) => setAPoster(e.target.value)} placeholder="Image URL" className="profile-input" />
+          <FighterImagePicker value={aPoster} onPick={() => aRef.current?.click()} onClear={() => setAPoster("")} />
+          <input ref={aRef} type="file" accept="image/*" className="hidden" onChange={(e) => pickImage(e, setAPoster)} />
         </div>
         <div className="space-y-2">
           <p className="text-[10px] font-mono text-primary uppercase tracking-widest">Fighter B</p>
           <input value={bHandle} onChange={(e) => setBHandle(e.target.value)} placeholder="@handle" className="profile-input" />
-          <input value={bPoster} onChange={(e) => setBPoster(e.target.value)} placeholder="Image URL" className="profile-input" />
+          <FighterImagePicker value={bPoster} onPick={() => bRef.current?.click()} onClear={() => setBPoster("")} />
+          <input ref={bRef} type="file" accept="image/*" className="hidden" onChange={(e) => pickImage(e, setBPoster)} />
         </div>
       </div>
 
@@ -678,6 +708,46 @@ function DuelForm({ onClose }: { onClose: () => void }) {
       </div>
 
       <FormActions onCancel={onClose} onSubmit={submit} disabled={!valid} submitLabel="Start duel" />
+    </div>
+  );
+}
+
+function FighterImagePicker({
+  value,
+  onPick,
+  onClear,
+}: {
+  value: string;
+  onPick: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 p-2 rounded-xl bg-card border border-border">
+      <div className="size-12 rounded-lg overflow-hidden bg-secondary shrink-0 flex items-center justify-center">
+        {value ? (
+          <img src={value} alt="" className="w-full h-full object-cover" />
+        ) : (
+          <ImagePlus className="size-4 text-muted-foreground" />
+        )}
+      </div>
+      <div className="flex flex-col gap-1 flex-1">
+        <button
+          type="button"
+          onClick={onPick}
+          className="px-2 py-1 rounded-md bg-secondary border border-border text-[10px] font-bold uppercase tracking-wide"
+        >
+          {value ? "Replace" : "Pick image"}
+        </button>
+        {value && (
+          <button
+            type="button"
+            onClick={onClear}
+            className="text-[9px] font-mono text-muted-foreground uppercase tracking-wide"
+          >
+            Remove
+          </button>
+        )}
+      </div>
     </div>
   );
 }
