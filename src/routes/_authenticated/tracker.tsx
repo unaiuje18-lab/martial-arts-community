@@ -390,10 +390,11 @@ function TrackerPage() {
           <div className="space-y-2">
             {sorted.map((s) => {
               const date = new Date(s.date);
+              const label = s.activity?.trim() ? s.activity : s.art;
               return (
                 <div
                   key={s.id}
-                  className="flex items-center gap-4 p-3 rounded-xl bg-card border border-border border-l-2 border-l-accent"
+                  className="flex items-start gap-4 p-3 rounded-xl bg-card border border-border border-l-2 border-l-accent"
                 >
                   <div className="size-11 rounded-xl bg-accent/10 border border-accent/20 flex flex-col items-center justify-center leading-none shrink-0">
                     <span className="text-[8px] font-mono text-accent uppercase">
@@ -402,11 +403,28 @@ function TrackerPage() {
                     <span className="text-sm font-bold text-accent">{date.getDate()}</span>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold truncate">{s.art}</p>
+                    <p className="text-sm font-semibold truncate">{label}</p>
                     <p className="text-[10px] font-mono text-muted-foreground uppercase">
                       {s.durationMin} min · RPE {s.effort}/10
                       {s.notes ? ` · ${s.notes}` : ""}
                     </p>
+                    {(s.stravaUrl || s.photoUrl) && (
+                      <div className="flex items-center gap-2 mt-2">
+                        {s.photoUrl && (
+                          <img src={s.photoUrl} alt="" className="size-12 rounded-md object-cover border border-border" />
+                        )}
+                        {s.stravaUrl && (
+                          <a
+                            href={s.stravaUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider text-accent hover:underline"
+                          >
+                            <ExternalLink className="size-3" /> Strava
+                          </a>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <button
                     onClick={() => actions.deleteSession(s.id)}
