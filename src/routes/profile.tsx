@@ -473,25 +473,33 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
                   )}
 
                   {activeSystem ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {activeSystem.belts.map((b) => {
-                        const sel = current === b;
-                        return (
-                          <button
-                            key={b}
-                            type="button"
-                            onClick={() => setRankValue(a, sel ? "" : b, activeSystem.id)}
-                            className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border transition-colors ${
-                              sel
-                                ? "bg-accent text-accent-foreground border-accent"
-                                : "bg-secondary border-border text-muted-foreground"
-                            }`}
-                          >
-                            {b}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <>
+                      <div className="flex flex-wrap gap-1.5">
+                        {activeSystem.belts.map((b) => {
+                          const sel = current === b;
+                          return (
+                            <button
+                              key={b}
+                              type="button"
+                              onClick={() => setRankValue(a, sel ? "" : b, activeSystem.id)}
+                              className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border transition-colors ${
+                                sel
+                                  ? "bg-accent text-accent-foreground border-accent"
+                                  : "bg-secondary border-border text-muted-foreground"
+                              }`}
+                            >
+                              {b}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <BeltHistoryEditor
+                        belts={activeSystem.belts}
+                        history={rank?.history ?? []}
+                        onAdd={(belt, date) => addHistoryEntry(a, belt, date)}
+                        onRemove={(idx) => removeHistoryEntry(a, idx)}
+                      />
+                    </>
                   ) : (
                     <input
                       value={current}
