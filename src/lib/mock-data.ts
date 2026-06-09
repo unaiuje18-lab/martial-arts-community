@@ -28,15 +28,32 @@ export const ARTS: Art[] = [
 
 export const LEVELS = ["Beginner", "Intermediate", "Advanced"] as const;
 
-// Belt systems per discipline. Arts not listed here use years of experience instead.
-export const BELTS: Partial<Record<Art, string[]>> = {
-  BJJ: ["White", "Blue", "Purple", "Brown", "Black"],
-  Judo: ["White", "Yellow", "Orange", "Green", "Blue", "Brown", "Black"],
-  Karate: ["White", "Yellow", "Orange", "Green", "Blue", "Purple", "Brown", "Black"],
+// Belt systems per discipline. Each art can offer multiple grading systems
+// (e.g. BJJ: Gi/No-Gi, Judo & Karate: Kyu/Dan). Arts not listed here use
+// years of experience instead.
+export interface BeltSystem {
+  id: string;
+  label: string;
+  belts: string[];
+}
+
+export const BELT_SYSTEMS: Partial<Record<Art, BeltSystem[]>> = {
+  BJJ: [
+    { id: "gi", label: "Gi (IBJJF)", belts: ["White", "Blue", "Purple", "Brown", "Black", "Coral", "Red"] },
+    { id: "nogi", label: "No-Gi (ADCC)", belts: ["Beginner", "Intermediate", "Advanced", "Expert"] },
+  ],
+  Judo: [
+    { id: "kyu", label: "Kyu (colored)", belts: ["6 Kyu White", "5 Kyu Yellow", "4 Kyu Orange", "3 Kyu Green", "2 Kyu Blue", "1 Kyu Brown"] },
+    { id: "dan", label: "Dan (black)", belts: ["1 Dan", "2 Dan", "3 Dan", "4 Dan", "5 Dan", "6 Dan", "7 Dan", "8 Dan", "9 Dan", "10 Dan"] },
+  ],
+  Karate: [
+    { id: "kyu", label: "Kyu (colored)", belts: ["9 Kyu White", "8 Kyu Yellow", "7 Kyu Orange", "6 Kyu Green", "5 Kyu Blue", "4 Kyu Purple", "3 Kyu Brown", "2 Kyu Brown", "1 Kyu Brown"] },
+    { id: "dan", label: "Dan (black)", belts: ["1 Dan", "2 Dan", "3 Dan", "4 Dan", "5 Dan", "6 Dan", "7 Dan", "8 Dan", "9 Dan", "10 Dan"] },
+  ],
 };
 
 export function hasBelts(art: Art): boolean {
-  return Boolean(BELTS[art]);
+  return Boolean(BELT_SYSTEMS[art]);
 }
 
 export const CONTENT_PREFS = [
