@@ -4,6 +4,8 @@ import { ArrowRight } from "lucide-react";
 import { MobileShell } from "@/components/MobileShell";
 import { ARTS, LEVELS, CONTENT_PREFS, type Art } from "@/lib/mock-data";
 import { auth } from "@/lib/auth";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/onboarding")({
   head: () => ({
@@ -27,7 +29,7 @@ function Onboarding() {
 
   const steps = ["Identity", "Disciplines", "Skill", "Interests"] as const;
 
-  const next = () => {
+  const next = async () => {
     if (step < steps.length - 1) setStep((s) => s + 1);
     else {
       auth.signIn({
@@ -38,6 +40,20 @@ function Onboarding() {
         level: level ?? undefined,
         prefs,
       });
+      // Persist core public profile fields to backend so they survive devices.
+      const { data: u } = await supabase.auth.getUser();
+      if (u.user) {
+        const cleanHandle = username.trim().replace(/\s/g, "_").toLowerCase();
+        const { error } = await supabase
+          .from("profiles")
+          .update({
+            display_name: name.trim() || null,
+            handle: cleanHandle || u.user.email?.split("@")[0] || "user",
+            primary_art: arts[0] ?? null,
+          })
+          .eq("id", u.user.id);
+        if (error) toast.error(`Profile not saved: ${error.message}`);
+      }
       navigate({ to: "/" });
     }
   };
