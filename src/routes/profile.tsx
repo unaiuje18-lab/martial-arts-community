@@ -85,9 +85,13 @@ function ProfilePage() {
         <div className="flex gap-2 flex-wrap">
           {arts.map((a) => {
             const r = ranks[a];
+            const sysList = BELT_SYSTEMS[a];
+            const sysLabel = sysList && sysList.length > 1
+              ? sysList.find((s) => s.id === r?.system)?.id?.toUpperCase()
+              : undefined;
             const suffix = r?.value
               ? r.type === "belt"
-                ? ` · ${r.value} BELT`
+                ? ` · ${r.value}${sysLabel ? ` (${sysLabel})` : ""}`
                 : ` · ${r.value}Y`
               : "";
             return (
