@@ -1,9 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { ArrowLeft, Lock, Plus, Trash2, X } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, Lock, Plus, Trash2, X } from "lucide-react";
 import { MobileShell } from "@/components/MobileShell";
 import { ARTS, ME, type Art } from "@/lib/mock-data";
 import { actions, computeStreak, useStore } from "@/lib/store";
+import { useUser } from "@/lib/auth";
 
 export const Route = createFileRoute("/tracker")({
   head: () => ({
@@ -18,7 +19,12 @@ export const Route = createFileRoute("/tracker")({
 function TrackerPage() {
   const sessions = useStore((s) => s.sessions);
   const goals = useStore((s) => s.goals);
+  const user = useUser();
   const [adding, setAdding] = useState(false);
+  const [prefillDate, setPrefillDate] = useState<string | null>(null);
+  const [monthOffset, setMonthOffset] = useState(0);
+
+  if (!user) return <PrivateGate />;
 
   const days = useMemo(() => {
     const today = new Date();
@@ -48,6 +54,61 @@ function TrackerPage() {
 
   const sorted = [...sessions].sort((a, b) => +new Date(b.date) - +new Date(a.date));
 
+  // ---- Month calendar ----
+  const monthRef = useMemo(() => {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() + monthOffset);
+    return d;
+  }, [monthOffset]);
+
+  const monthGrid = useMemo(() => {
+    const year = monthRef.getFullYear();
+    const month = monthRef.getMonth();
+    const first = new Date(year, month, 1);
+    const startDow = (first.getDay() + 6) % 7; // Monday-first
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const cells: ({ iso: string; day: number; inMonth: boolean } | null)[] = [];
+    for (let i = 0; i < startDow; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) {
+      const date = new Date(year, month, d);
+      cells.push({ iso: date.toISOString().slice(0, 10), day: d, inMonth: true });
+    }
+    while (cells.length % 7 !== 0) cells.push(null);
+    return cells;
+  }, [monthRef]);
+
+  const monthSessions = useMemo(
+    () =>
+      sessions.filter((s) => {
+        const d = new Date(s.date);
+        return d.getFullYear() === monthRef.getFullYear() && d.getMonth() === monthRef.getMonth();
+      }),
+    [sessions, monthRef],
+  );
+
+  const monthlyRecap = useMemo(() => {
+    const total = monthSessions.length;
+    const minutes = monthSessions.reduce((a, s) => a + s.durationMin, 0);
+    const avg = total ? (monthSessions.reduce((a, s) => a + s.effort, 0) / total).toFixed(1) : "—";
+    const daysInMonth = new Date(
+      monthRef.getFullYear(),
+      monthRef.getMonth() + 1,
+      0,
+    ).getDate();
+    const activeDays = new Set(monthSessions.map((s) => s.date.slice(0, 10))).size;
+    const consistency = Math.round((activeDays / daysInMonth) * 100);
+    return { total, minutes, avg, consistency, activeDays, daysInMonth };
+  }, [monthSessions, monthRef]);
+
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const monthLabel = monthRef.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+
+  const openForDate = (iso: string) => {
+    setPrefillDate(iso);
+    setAdding(true);
+  };
+
   return (
     <MobileShell>
       <div className="space-y-7 animate-snap-in">
@@ -63,7 +124,7 @@ function TrackerPage() {
             <Lock className="size-3" /> Private
           </p>
           <button
-            onClick={() => setAdding(true)}
+            onClick={() => { setPrefillDate(null); setAdding(true); }}
             aria-label="Add session"
             className="size-9 rounded-full bg-accent text-accent-foreground flex items-center justify-center"
           >
@@ -74,7 +135,7 @@ function TrackerPage() {
         <div>
           <h1 className="font-display text-4xl uppercase tracking-tight italic">Training Log</h1>
           <p className="text-sm text-muted-foreground">
-            Streak {streak || ME.streak} days · Keep it lit.
+            {user.name.split(" ")[0]} · Streak {streak || ME.streak} days · Keep it lit.
           </p>
         </div>
 
@@ -83,6 +144,101 @@ function TrackerPage() {
           <Recap label="Consistency" value={`${consistency}%`} accent />
           <Recap label="Avg Effort" value={`${avgEffort}/10`} />
           <Recap label="Top Art" value={topArt} />
+        </section>
+
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="font-display text-xl uppercase italic tracking-tight">Calendar</h2>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setMonthOffset((m) => m - 1)}
+                aria-label="Previous month"
+                className="size-7 rounded-full bg-secondary border border-border flex items-center justify-center"
+              >
+                <ChevronLeft className="size-3.5" />
+              </button>
+              <span className="text-[10px] font-mono uppercase tracking-widest w-28 text-center">
+                {monthLabel}
+              </span>
+              <button
+                onClick={() => setMonthOffset((m) => m + 1)}
+                aria-label="Next month"
+                disabled={monthOffset >= 0}
+                className="size-7 rounded-full bg-secondary border border-border flex items-center justify-center disabled:opacity-30"
+              >
+                <ChevronRight className="size-3.5" />
+              </button>
+            </div>
+          </div>
+          <div className="grid grid-cols-7 gap-1 text-[9px] font-mono uppercase text-muted-foreground tracking-widest">
+            {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
+              <div key={i} className="text-center">{d}</div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-1">
+            {monthGrid.map((cell, i) => {
+              if (!cell) return <div key={i} className="aspect-square" />;
+              const daySessions = sessions.filter((s) => s.date.slice(0, 10) === cell.iso);
+              const effort = daySessions.length
+                ? Math.round(daySessions.reduce((a, s) => a + s.effort, 0) / daySessions.length)
+                : 0;
+              const isToday = cell.iso === todayIso;
+              const isFuture = cell.iso > todayIso;
+              return (
+                <button
+                  key={cell.iso}
+                  onClick={() => !isFuture && openForDate(cell.iso)}
+                  disabled={isFuture}
+                  className={`aspect-square rounded-md border text-[10px] font-mono flex flex-col items-center justify-center gap-0.5 transition-colors ${
+                    isToday ? "border-accent ring-1 ring-accent/40" : "border-border"
+                  } ${isFuture ? "opacity-30" : "active:scale-95"}`}
+                  style={
+                    effort > 0
+                      ? {
+                          background: `color-mix(in oklch, var(--accent) ${Math.min(100, effort * 10)}%, transparent)`,
+                        }
+                      : undefined
+                  }
+                  aria-label={`${cell.iso} ${daySessions.length} sessions`}
+                >
+                  <span className={effort > 5 ? "text-accent-foreground font-bold" : ""}>
+                    {cell.day}
+                  </span>
+                  {daySessions.length > 0 && (
+                    <span className="size-1 rounded-full bg-current opacity-70" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <div className="flex justify-between items-baseline">
+            <h2 className="font-display text-xl uppercase italic tracking-tight">Monthly Recap</h2>
+            <span className="text-[10px] font-mono text-muted-foreground uppercase">{monthLabel}</span>
+          </div>
+          <div className="bg-card border border-border rounded-2xl p-4 space-y-4">
+            <div className="grid grid-cols-3 gap-3">
+              <MiniStat label="Sessions" value={String(monthlyRecap.total)} />
+              <MiniStat label="Minutes" value={String(monthlyRecap.minutes)} />
+              <MiniStat label="Avg RPE" value={`${monthlyRecap.avg}`} />
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-[10px] font-mono uppercase tracking-widest">
+                <span className="text-muted-foreground">Consistency</span>
+                <span className="text-accent">
+                  {monthlyRecap.activeDays}/{monthlyRecap.daysInMonth} days · {monthlyRecap.consistency}%
+                </span>
+              </div>
+              <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+                <div
+                  className="h-full bg-accent transition-all"
+                  style={{ width: `${monthlyRecap.consistency}%` }}
+                />
+              </div>
+            </div>
+          </div>
         </section>
 
         <section className="space-y-3">
@@ -115,13 +271,32 @@ function TrackerPage() {
         </section>
 
         <section className="space-y-3">
-          <h2 className="font-display text-xl uppercase italic tracking-tight">Goals</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="font-display text-xl uppercase italic tracking-tight">Goals</h2>
+            <button
+              onClick={() => {
+                const title = prompt("Goal title (e.g. Improve guard passing)");
+                if (!title) return;
+                const target = prompt("Target (e.g. 4× per week)") ?? "";
+                actions.addGoal({ title, target, progress: 0 });
+              }}
+              className="text-[10px] font-mono uppercase text-accent tracking-widest"
+            >
+              + Add
+            </button>
+          </div>
           <div className="space-y-3">
             {goals.map((g) => (
               <div key={g.id} className="bg-card border border-border rounded-xl p-4 space-y-2">
-                <div className="flex justify-between items-baseline">
+                <div className="flex justify-between items-baseline gap-2">
                   <p className="text-sm font-semibold">{g.title}</p>
                   <span className="text-[10px] font-mono text-accent">{g.progress}%</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+                  <div
+                    className="h-full bg-accent transition-all"
+                    style={{ width: `${g.progress}%` }}
+                  />
                 </div>
                 <input
                   type="range"
@@ -132,7 +307,9 @@ function TrackerPage() {
                   className="w-full accent-[var(--accent)]"
                   aria-label={`Adjust progress for ${g.title}`}
                 />
-                <p className="text-[10px] font-mono text-muted-foreground uppercase">{g.target}</p>
+                <div className="flex justify-between items-center">
+                  <p className="text-[10px] font-mono text-muted-foreground uppercase">{g.target}</p>
+                </div>
               </div>
             ))}
           </div>
@@ -180,8 +357,48 @@ function TrackerPage() {
         </section>
       </div>
 
-      {adding && <AddSessionSheet onClose={() => setAdding(false)} />}
+      {adding && (
+        <AddSessionSheet
+          initialDate={prefillDate ?? new Date().toISOString().slice(0, 10)}
+          onClose={() => { setAdding(false); setPrefillDate(null); }}
+        />
+      )}
     </MobileShell>
+  );
+}
+
+function PrivateGate() {
+  return (
+    <MobileShell>
+      <div className="min-h-[70vh] flex flex-col items-center justify-center text-center space-y-6 animate-snap-in px-4">
+        <div className="size-16 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center">
+          <Lock className="size-7 text-accent" />
+        </div>
+        <div className="space-y-2">
+          <h1 className="font-display text-3xl uppercase italic tracking-tight">Private Tracker</h1>
+          <p className="text-sm text-muted-foreground max-w-xs">
+            Your training log is only visible to you. Create your fighter profile to unlock it.
+          </p>
+        </div>
+        <Link
+          to="/onboarding"
+          className="px-6 py-3 rounded-full bg-accent text-accent-foreground font-bold uppercase tracking-wide text-sm"
+        >
+          Create Profile
+        </Link>
+      </div>
+    </MobileShell>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground mb-1">
+        {label}
+      </p>
+      <p className="font-display text-xl leading-none">{value}</p>
+    </div>
   );
 }
 
@@ -196,12 +413,13 @@ function Recap({ label, value, accent }: { label: string; value: string; accent?
   );
 }
 
-function AddSessionSheet({ onClose }: { onClose: () => void }) {
+function AddSessionSheet({ onClose, initialDate }: { onClose: () => void; initialDate: string }) {
   const [art, setArt] = useState<Art>("BJJ");
   const [duration, setDuration] = useState(60);
   const [effort, setEffort] = useState(7);
   const [notes, setNotes] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(initialDate);
+  const [completed, setCompleted] = useState(true);
 
   const save = () => {
     actions.addSession({
@@ -211,6 +429,7 @@ function AddSessionSheet({ onClose }: { onClose: () => void }) {
       notes: notes.trim() || undefined,
       date: new Date(date).toISOString(),
     });
+    void completed;
     onClose();
   };
 
@@ -225,6 +444,26 @@ function AddSessionSheet({ onClose }: { onClose: () => void }) {
           </button>
         </div>
         <div className="p-4 space-y-5">
+          <Field label="Status">
+            <div className="flex gap-2">
+              <button
+                onClick={() => setCompleted(true)}
+                className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wide border ${
+                  completed ? "bg-accent text-accent-foreground border-accent" : "bg-secondary border-border text-muted-foreground"
+                }`}
+              >
+                Completed
+              </button>
+              <button
+                onClick={() => setCompleted(false)}
+                className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wide border ${
+                  !completed ? "bg-accent text-accent-foreground border-accent" : "bg-secondary border-border text-muted-foreground"
+                }`}
+              >
+                Planned
+              </button>
+            </div>
+          </Field>
           <Field label="Discipline">
             <div className="flex flex-wrap gap-2">
               {ARTS.map((a) => (
