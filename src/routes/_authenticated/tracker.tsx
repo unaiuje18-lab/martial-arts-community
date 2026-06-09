@@ -6,7 +6,7 @@ import { logIncident } from "@/lib/incident";
 import { ArrowLeft, ChevronLeft, ChevronRight, Lock, Plus, Trash2, X } from "lucide-react";
 import { MobileShell } from "@/components/MobileShell";
 import { ARTS, ME, type Art } from "@/lib/mock-data";
-import { actions, computeStreak, useStore } from "@/lib/store";
+import { actions, computeStreak, lastTrainingDate, useStore } from "@/lib/store";
 import { useUser } from "@/lib/auth";
 
 export const Route = createFileRoute("/_authenticated/tracker")({
@@ -198,6 +198,8 @@ function TrackerPage() {
           <Recap label="Avg Effort" value={`${avgEffort}/10`} />
           <Recap label="Top Art" value={topArt} />
         </section>
+
+        <StreakCard sessions={sessions} streak={streak} />
 
         <section className="space-y-3">
           <div className="flex items-center justify-between">
