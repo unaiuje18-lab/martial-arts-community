@@ -902,38 +902,58 @@ function FighterImagePicker({
   value,
   onPick,
   onClear,
+  uploaded,
+  uploading,
+  progress,
 }: {
   value: string;
   onPick: () => void;
   onClear: () => void;
+  uploaded: boolean;
+  uploading: boolean;
+  progress: number;
 }) {
   return (
-    <div className="flex items-center gap-2 p-2 rounded-xl bg-card border border-border">
-      <div className="size-12 rounded-lg overflow-hidden bg-secondary shrink-0 flex items-center justify-center">
-        {value ? (
-          <img src={value} alt="" className="w-full h-full object-cover" />
-        ) : (
-          <ImagePlus className="size-4 text-muted-foreground" />
-        )}
-      </div>
-      <div className="flex flex-col gap-1 flex-1">
-        <button
-          type="button"
-          onClick={onPick}
-          className="px-2 py-1 rounded-md bg-secondary border border-border text-[10px] font-bold uppercase tracking-wide"
-        >
-          {value ? "Replace" : "Pick image"}
-        </button>
-        {value && (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-2 p-2 rounded-xl bg-card border border-border">
+        <div className="size-12 rounded-lg overflow-hidden bg-secondary shrink-0 flex items-center justify-center relative">
+          {value ? (
+            <img src={value} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <ImagePlus className="size-4 text-muted-foreground" />
+          )}
+          {uploading && (
+            <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+              <Loader2 className="size-4 animate-spin text-white" />
+            </div>
+          )}
+          {uploaded && !uploading && (
+            <div className="absolute bottom-0 right-0 size-4 rounded-full bg-accent flex items-center justify-center">
+              <Check className="size-2.5 text-accent-foreground" />
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col gap-1 flex-1 min-w-0">
           <button
             type="button"
-            onClick={onClear}
-            className="text-[9px] font-mono text-muted-foreground uppercase tracking-wide"
+            onClick={onPick}
+            disabled={uploading}
+            className="px-2 py-1 rounded-md bg-secondary border border-border text-[10px] font-bold uppercase tracking-wide disabled:opacity-40"
           >
-            Remove
+            {value ? "Replace" : "Pick image"}
           </button>
-        )}
+          {value && !uploading && (
+            <button
+              type="button"
+              onClick={onClear}
+              className="text-[9px] font-mono text-muted-foreground uppercase tracking-wide text-left"
+            >
+              Remove
+            </button>
+          )}
+        </div>
       </div>
+      {uploading && <UploadProgressBar progress={progress} label="Uploading" />}
     </div>
   );
 }
