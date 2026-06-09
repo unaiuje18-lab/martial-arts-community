@@ -537,8 +537,26 @@ function AddSessionSheet({ onClose, initialDate }: { onClose: () => void; initia
   const [notes, setNotes] = useState("");
   const [date, setDate] = useState(initialDate);
   const [completed, setCompleted] = useState(true);
+  const [activity, setActivity] = useState("");
+  const [stravaUrl, setStravaUrl] = useState("");
+  const [photoUrl, setPhotoUrl] = useState<string | undefined>(undefined);
+  const photoRef = useRef<HTMLInputElement>(null);
+
+  const onPickPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.size > 3 * 1024 * 1024) { toast.error("Image too large (max 3MB)"); return; }
+    const reader = new FileReader();
+    reader.onload = () => setPhotoUrl(reader.result as string);
+    reader.readAsDataURL(f);
+  };
 
   const save = () => {
+    const url = stravaUrl.trim();
+    if (url && !/^https?:\/\//i.test(url)) {
+      toast.error("Strava link must start with http(s)://");
+      return;
+    }
     actions.addSession({
       art,
       durationMin: duration,
@@ -546,6 +564,9 @@ function AddSessionSheet({ onClose, initialDate }: { onClose: () => void; initia
       notes: notes.trim() || undefined,
       date: new Date(date).toISOString(),
       completed,
+      activity: activity.trim() || undefined,
+      stravaUrl: url || undefined,
+      photoUrl,
     });
     onClose();
   };
