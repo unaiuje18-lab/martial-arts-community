@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Upload,
   Swords,
@@ -23,6 +23,8 @@ import {
   ImagePlus,
   Trash2,
   Loader2,
+  Crop,
+  Scissors,
 } from "lucide-react";
 import { toast } from "sonner";
 import { MobileShell } from "@/components/MobileShell";
@@ -36,6 +38,7 @@ import {
 import { ARTS, LEVELS, type Art } from "@/lib/mock-data";
 import { actions as storeActions } from "@/lib/store";
 import { useUser } from "@/lib/auth";
+import { uploadMedia, type UploadResult } from "@/lib/media-upload";
 
 export const Route = createFileRoute("/create")({
   head: () => ({
@@ -49,11 +52,11 @@ export const Route = createFileRoute("/create")({
 
 type ActionKey = "video" | "duel" | "training" | "goal" | "achievement";
 
-// ---- Local persistence helpers ----
-const MAX_VIDEO_MB = 12;
-const MAX_IMAGE_MB = 3;
+// ---- Upload limits ----
+const MAX_VIDEO_MB = 100;
+const MAX_IMAGE_MB = 8;
 
-function fileToDataUrl(file: File): Promise<string> {
+function fileToDataUrl(file: Blob): Promise<string> {
   return new Promise((res, rej) => {
     const r = new FileReader();
     r.onload = () => res(r.result as string);
@@ -62,46 +65,50 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
-function generateVideoPoster(videoSrc: string): Promise<string> {
+/** Capture a 9:16 cover from a loaded <video> at the given yOffset (0..1). */
+function captureCover(video: HTMLVideoElement, yOffset: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
-    const v = document.createElement("video");
-    v.preload = "metadata";
-    v.muted = true;
-    v.playsInline = true;
-    v.crossOrigin = "anonymous";
-    v.src = videoSrc;
-    const cleanup = () => {
-      v.removeAttribute("src");
-      v.load();
-    };
-    v.onloadedmetadata = () => {
-      try {
-        v.currentTime = Math.min(0.5, (v.duration || 1) / 4);
-      } catch {
-        reject(new Error("seek-fail"));
-      }
-    };
-    v.onseeked = () => {
-      try {
-        const c = document.createElement("canvas");
-        const w = (c.width = Math.min(720, v.videoWidth || 720));
-        const h = (c.height = Math.round(w * ((v.videoHeight || 1280) / (v.videoWidth || 720))));
-        const ctx = c.getContext("2d");
-        if (!ctx) throw new Error("no-ctx");
-        ctx.drawImage(v, 0, 0, w, h);
-        const url = c.toDataURL("image/jpeg", 0.7);
-        cleanup();
-        resolve(url);
-      } catch (e) {
-        cleanup();
-        reject(e);
-      }
-    };
-    v.onerror = () => {
-      cleanup();
-      reject(new Error("video-load-fail"));
-    };
+    try {
+      const targetW = 720;
+      const targetH = 1280;
+      const c = document.createElement("canvas");
+      c.width = targetW;
+      c.height = targetH;
+      const ctx = c.getContext("2d");
+      if (!ctx) throw new Error("no-ctx");
+      const vw = video.videoWidth || targetW;
+      const vh = video.videoHeight || targetH;
+      const scale = Math.max(targetW / vw, targetH / vh);
+      const drawW = vw * scale;
+      const drawH = vh * scale;
+      const dx = (targetW - drawW) / 2;
+      const extraY = drawH - targetH;
+      const dy = -(yOffset * extraY);
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, targetW, targetH);
+      ctx.drawImage(video, dx, dy, drawW, drawH);
+      c.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/jpeg", 0.85);
+    } catch (e) {
+      reject(e);
+    }
   });
+}
+
+function UploadProgressBar({ progress, label }: { progress: number; label: string }) {
+  const pct = Math.round(progress * 100);
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-widest">
+        <span className="text-muted-foreground flex items-center gap-1.5">
+          <Loader2 className="size-3 animate-spin" /> {label}
+        </span>
+        <span className="text-accent">{pct}%</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+        <div className="h-full bg-accent transition-all" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
 }
 
 const ACTION_LIST: { key: ActionKey; icon: typeof Upload; title: string; desc: string }[] = [
@@ -270,19 +277,60 @@ function MobilePreviewFrame({ children }: { children: React.ReactNode }) {
 
 function UploadVideoForm({ onClose }: { onClose: () => void }) {
   const user = useUser();
-  const [videoUrl, setVideoUrl] = useState("");
-  const [videoName, setVideoName] = useState("");
-  const [videoSizeMb, setVideoSizeMb] = useState(0);
-  const [posterUrl, setPosterUrl] = useState("");
+
+  // Local file + backend upload state
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoLocalUrl, setVideoLocalUrl] = useState("");
+  const [videoUpload, setVideoUpload] = useState<UploadResult | null>(null);
+  const [videoProgress, setVideoProgress] = useState(0);
+  const [videoUploading, setVideoUploading] = useState(false);
+
+  // Poster scrubber & crop
+  const [duration, setDuration] = useState(0);
+  const [posterSecond, setPosterSecond] = useState(0.5);
+  const [posterOffsetY, setPosterOffsetY] = useState(0.5);
+  const [posterPreview, setPosterPreview] = useState("");
+  const [posterUpload, setPosterUpload] = useState<UploadResult | null>(null);
+  const [posterProgress, setPosterProgress] = useState(0);
+  const [posterUploading, setPosterUploading] = useState(false);
+
   const [caption, setCaption] = useState("");
   const [art, setArt] = useState<Art | null>(null);
   const [level, setLevel] = useState<(typeof LEVELS)[number] | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const videoFileRef = useRef<HTMLInputElement>(null);
-  const posterFileRef = useRef<HTMLInputElement>(null);
+  const [publishing, setPublishing] = useState(false);
 
-  const handleVideoFile = async (f: File | null | undefined) => {
+  const videoFileRef = useRef<HTMLInputElement>(null);
+  const videoElRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => () => {
+    if (videoLocalUrl) URL.revokeObjectURL(videoLocalUrl);
+  }, [videoLocalUrl]);
+
+  const startVideoUpload = async (f: File) => {
+    setVideoUploading(true);
+    setVideoProgress(0);
+    try {
+      const result = await uploadMedia(f, {
+        folder: "videos",
+        filename: f.name.replace(/\.[^.]+$/, ""),
+        contentType: f.type,
+        onProgress: (p) => setVideoProgress(p),
+      });
+      setVideoUpload(result);
+      toast.success("Video uploaded");
+    } catch (e) {
+      toast.error((e as Error).message || "Could not upload video");
+      setVideoFile(null);
+      setVideoUpload(null);
+      if (videoLocalUrl) URL.revokeObjectURL(videoLocalUrl);
+      setVideoLocalUrl("");
+    } finally {
+      setVideoUploading(false);
+    }
+  };
+
+  const handleVideoFile = (f: File | null | undefined) => {
     if (!f) return;
     if (!f.type.startsWith("video/")) {
       toast.error("That file is not a video");
@@ -290,73 +338,115 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
     }
     const mb = f.size / (1024 * 1024);
     if (mb > MAX_VIDEO_MB) {
-      toast.error(`Video too large (${mb.toFixed(1)}MB). Max ${MAX_VIDEO_MB}MB for local saving.`);
+      toast.error(`Video too large (${mb.toFixed(1)}MB). Max ${MAX_VIDEO_MB}MB.`);
       return;
     }
-    setBusy(true);
-    try {
-      const dataUrl = await fileToDataUrl(f);
-      setVideoUrl(dataUrl);
-      setVideoName(f.name);
-      setVideoSizeMb(mb);
-      if (!posterUrl) {
-        try {
-          const p = await generateVideoPoster(dataUrl);
-          setPosterUrl(p);
-        } catch {
-          /* poster optional */
-        }
-      }
-    } catch {
-      toast.error("Could not read that video");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handlePosterFile = async (f: File | null | undefined) => {
-    if (!f) return;
-    if (!f.type.startsWith("image/")) {
-      toast.error("That file is not an image");
-      return;
-    }
-    const mb = f.size / (1024 * 1024);
-    if (mb > MAX_IMAGE_MB) {
-      toast.error(`Cover too large (${mb.toFixed(1)}MB). Max ${MAX_IMAGE_MB}MB.`);
-      return;
-    }
-    try {
-      setPosterUrl(await fileToDataUrl(f));
-    } catch {
-      toast.error("Could not read that image");
-    }
+    if (videoLocalUrl) URL.revokeObjectURL(videoLocalUrl);
+    const local = URL.createObjectURL(f);
+    setVideoFile(f);
+    setVideoLocalUrl(local);
+    setVideoUpload(null);
+    setPosterUpload(null);
+    setPosterPreview("");
+    setDuration(0);
+    setPosterSecond(0.5);
+    void startVideoUpload(f);
   };
 
   const clearVideo = () => {
-    setVideoUrl("");
-    setVideoName("");
-    setVideoSizeMb(0);
-    setPosterUrl("");
+    if (videoLocalUrl) URL.revokeObjectURL(videoLocalUrl);
+    setVideoFile(null);
+    setVideoLocalUrl("");
+    setVideoUpload(null);
+    setVideoProgress(0);
+    setPosterPreview("");
+    setPosterUpload(null);
+    setPosterProgress(0);
+    setDuration(0);
     if (videoFileRef.current) videoFileRef.current.value = "";
   };
 
-  const valid = !!videoUrl && !!caption.trim() && !!art && !!level && !busy;
-
-  const submit = () => {
-    if (!valid || !art || !level) return;
+  const regeneratePreview = async () => {
+    const v = videoElRef.current;
+    if (!v || !videoLocalUrl) return;
     try {
-      storeActions.addPost({
+      const want = Math.min(Math.max(0, posterSecond), Math.max(0, (v.duration || duration) - 0.05));
+      if (Math.abs(v.currentTime - want) > 0.05) {
+        await new Promise<void>((res) => {
+          const onSeek = () => { v.removeEventListener("seeked", onSeek); res(); };
+          v.addEventListener("seeked", onSeek);
+          v.currentTime = want;
+        });
+      }
+      const blob = await captureCover(v, posterOffsetY);
+      setPosterPreview(await fileToDataUrl(blob));
+      setPosterUpload(null);
+      setPosterProgress(0);
+    } catch {/* ignore */}
+  };
+
+  useEffect(() => {
+    if (!videoLocalUrl || !duration) return;
+    const t = setTimeout(() => void regeneratePreview(), 120);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posterSecond, posterOffsetY, duration, videoLocalUrl]);
+
+  const uploadPoster = async () => {
+    const v = videoElRef.current;
+    if (!v) return;
+    setPosterUploading(true);
+    setPosterProgress(0);
+    try {
+      const blob = await captureCover(v, posterOffsetY);
+      if (blob.size / (1024 * 1024) > MAX_IMAGE_MB) throw new Error("Cover too large");
+      const result = await uploadMedia(blob, {
+        folder: "posters",
+        filename: "cover",
+        contentType: "image/jpeg",
+        onProgress: (p) => setPosterProgress(p),
+      });
+      setPosterUpload(result);
+      toast.success("Cover saved");
+    } catch (e) {
+      toast.error((e as Error).message || "Could not save cover");
+    } finally {
+      setPosterUploading(false);
+    }
+  };
+
+  const missing: string[] = [];
+  if (!videoUpload) missing.push("video uploaded");
+  if (!posterUpload) missing.push("cover saved");
+  if (!caption.trim()) missing.push("caption");
+  if (!art) missing.push("discipline");
+  if (!level) missing.push("level");
+  const busy = videoUploading || posterUploading || publishing;
+  const canPublish = missing.length === 0 && !busy;
+
+  const submit = async () => {
+    if (!canPublish || !art || !level || !videoUpload || !posterUpload) {
+      toast.error(`Missing: ${missing.join(", ")}`);
+      return;
+    }
+    setPublishing(true);
+    try {
+      await storeActions.addPost({
         handle: user?.username ? `@${user.username}` : "@you",
         caption: caption.trim(),
-        video: videoUrl,
-        poster: posterUrl || "https://images.unsplash.com/photo-1517438476312-10d79c077509?w=800",
+        video: videoUpload.url,
+        poster: posterUpload.url,
+        videoPath: videoUpload.path,
+        posterPath: posterUpload.path,
         art,
         level,
       });
       toast.success("Video published to your feed");
       onClose();
-    } catch {
-      toast.error("Could not save — try a shorter or smaller video");
+    } catch (e) {
+      toast.error((e as Error).message || "Could not publish");
+    } finally {
+      setPublishing(false);
     }
   };
 
@@ -372,32 +462,17 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
           className="hidden"
           onChange={(e) => handleVideoFile(e.target.files?.[0])}
         />
-        {!videoUrl ? (
+        {!videoLocalUrl ? (
           <button
             type="button"
             onClick={() => videoFileRef.current?.click()}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragOver(true);
-            }}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
             onDragLeave={() => setDragOver(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragOver(false);
-              handleVideoFile(e.dataTransfer.files?.[0]);
-            }}
-            className={`w-full flex flex-col items-center justify-center gap-2 py-10 rounded-2xl border-2 border-dashed transition-colors ${
-              dragOver ? "border-accent bg-accent/5" : "border-border bg-card/50"
-            }`}
+            onDrop={(e) => { e.preventDefault(); setDragOver(false); handleVideoFile(e.dataTransfer.files?.[0]); }}
+            className={`w-full flex flex-col items-center justify-center gap-2 py-10 rounded-2xl border-2 border-dashed transition-colors ${dragOver ? "border-accent bg-accent/5" : "border-border bg-card/50"}`}
           >
-            {busy ? (
-              <Loader2 className="size-7 text-accent animate-spin" />
-            ) : (
-              <Film className="size-7 text-accent" />
-            )}
-            <p className="text-sm font-semibold">
-              {busy ? "Reading video…" : "Tap to choose a video"}
-            </p>
+            <Film className="size-7 text-accent" />
+            <p className="text-sm font-semibold">Tap to choose a video</p>
             <p className="text-[11px] text-muted-foreground">
               or drag & drop · MP4 / MOV · up to {MAX_VIDEO_MB}MB
             </p>
@@ -405,30 +480,51 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
         ) : (
           <div className="rounded-2xl border border-border bg-card overflow-hidden">
             <video
-              src={videoUrl}
+              ref={videoElRef}
+              src={videoLocalUrl}
               controls
               playsInline
+              preload="metadata"
+              onLoadedMetadata={(e) => {
+                const v = e.currentTarget;
+                setDuration(v.duration || 0);
+                setPosterSecond(Math.min(0.5, (v.duration || 1) / 4));
+              }}
               className="w-full aspect-video bg-black object-contain"
             />
+            {videoUploading && (
+              <div className="px-3 pt-3">
+                <UploadProgressBar progress={videoProgress} label="Uploading video" />
+              </div>
+            )}
             <div className="flex items-center justify-between gap-2 p-3">
               <div className="min-w-0">
-                <p className="text-xs font-semibold truncate">{videoName || "Selected video"}</p>
-                <p className="text-[10px] font-mono text-muted-foreground uppercase">
-                  {videoSizeMb ? `${videoSizeMb.toFixed(1)}MB` : "Ready"} · saved locally
+                <p className="text-xs font-semibold truncate">{videoFile?.name || "Selected video"}</p>
+                <p className="text-[10px] font-mono uppercase">
+                  {videoFile ? `${(videoFile.size / 1024 / 1024).toFixed(1)}MB` : ""}
+                  {videoUpload ? (
+                    <span className="text-accent"> · saved to cloud</span>
+                  ) : videoUploading ? (
+                    <span className="text-muted-foreground"> · uploading…</span>
+                  ) : (
+                    <span className="text-destructive"> · not uploaded</span>
+                  )}
                 </p>
               </div>
               <div className="flex gap-2 shrink-0">
                 <button
                   type="button"
+                  disabled={videoUploading}
                   onClick={() => videoFileRef.current?.click()}
-                  className="px-2.5 py-1.5 rounded-lg bg-secondary border border-border text-[10px] font-bold uppercase tracking-wide"
+                  className="px-2.5 py-1.5 rounded-lg bg-secondary border border-border text-[10px] font-bold uppercase tracking-wide disabled:opacity-40"
                 >
                   Replace
                 </button>
                 <button
                   type="button"
+                  disabled={videoUploading}
                   onClick={clearVideo}
-                  className="px-2.5 py-1.5 rounded-lg bg-secondary border border-border text-[10px] font-bold uppercase tracking-wide text-muted-foreground flex items-center gap-1"
+                  className="px-2.5 py-1.5 rounded-lg bg-secondary border border-border text-[10px] font-bold uppercase tracking-wide text-muted-foreground flex items-center gap-1 disabled:opacity-40"
                 >
                   <Trash2 className="size-3" /> Remove
                 </button>
@@ -438,37 +534,74 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
         )}
       </div>
 
-      <div className="space-y-1.5">
-        <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
-          Cover image · auto-generated
-        </span>
-        <input
-          ref={posterFileRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => handlePosterFile(e.target.files?.[0])}
-        />
-        <div className="flex items-center gap-3 p-2 rounded-2xl bg-card border border-border">
-          <div className="size-16 rounded-lg overflow-hidden bg-secondary shrink-0 flex items-center justify-center">
-            {posterUrl ? (
-              <img src={posterUrl} alt="" className="w-full h-full object-cover" />
-            ) : (
-              <ImagePlus className="size-5 text-muted-foreground" />
-            )}
+      {videoLocalUrl && (
+        <div className="space-y-3 p-3 rounded-2xl bg-card border border-border">
+          <div className="flex items-center gap-2">
+            <Scissors className="size-3.5 text-accent" />
+            <span className="text-[10px] font-mono text-accent uppercase tracking-widest">
+              Pick cover frame
+            </span>
           </div>
-          <p className="flex-1 text-[11px] text-muted-foreground">
-            {posterUrl ? "Looks good? Replace it if you want a different cover." : "Pick a custom cover or we'll grab one from the video."}
-          </p>
+          <div className="grid grid-cols-[88px_1fr] gap-3 items-start">
+            <div className="aspect-[9/16] rounded-lg overflow-hidden bg-secondary border border-border flex items-center justify-center">
+              {posterPreview ? (
+                <img src={posterPreview} alt="cover" className="w-full h-full object-cover" />
+              ) : (
+                <ImagePlus className="size-4 text-muted-foreground" />
+              )}
+            </div>
+            <div className="space-y-2 min-w-0">
+              <label className="block space-y-1">
+                <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest flex justify-between">
+                  <span>Second</span>
+                  <span className="text-accent">{posterSecond.toFixed(2)}s / {duration.toFixed(1)}s</span>
+                </span>
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(0.1, duration)}
+                  step={0.05}
+                  value={Math.min(posterSecond, duration || 0.1)}
+                  onChange={(e) => setPosterSecond(Number(e.target.value))}
+                  disabled={!duration}
+                  className="w-full accent-[var(--accent)]"
+                />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest flex justify-between">
+                  <span>Vertical crop</span>
+                  <Crop className="size-3" />
+                </span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={posterOffsetY}
+                  onChange={(e) => setPosterOffsetY(Number(e.target.value))}
+                  className="w-full accent-[var(--accent)]"
+                />
+              </label>
+            </div>
+          </div>
+          {posterUploading && <UploadProgressBar progress={posterProgress} label="Uploading cover" />}
           <button
             type="button"
-            onClick={() => posterFileRef.current?.click()}
-            className="px-2.5 py-1.5 rounded-lg bg-secondary border border-border text-[10px] font-bold uppercase tracking-wide"
+            onClick={uploadPoster}
+            disabled={!posterPreview || posterUploading || videoUploading}
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-secondary border border-border text-xs font-bold uppercase tracking-wide disabled:opacity-40"
           >
-            {posterUrl ? "Replace" : "Pick"}
+            {posterUpload ? (
+              <><CheckCircle2 className="size-4 text-accent" /> Cover saved · update</>
+            ) : posterUploading ? (
+              <><Loader2 className="size-4 animate-spin" /> Saving…</>
+            ) : (
+              <><Check className="size-4" /> Use this cover</>
+            )}
           </button>
         </div>
-      </div>
+      )}
+
       <Field label="Caption">
         <textarea
           value={caption}
@@ -495,12 +628,22 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
             caption={caption || "Your caption will appear here…"}
             art={art ?? "BJJ"}
             level={level ?? "Beginner"}
-            poster={posterUrl || undefined}
+            poster={posterPreview || undefined}
           />
         </MobilePreviewFrame>
       </div>
 
-      <FormActions onCancel={onClose} onSubmit={submit} disabled={!valid} submitLabel="Publish" />
+      {missing.length > 0 && (
+        <p className="text-[11px] text-muted-foreground">
+          Missing: <span className="text-foreground">{missing.join(", ")}</span>
+        </p>
+      )}
+      <FormActions
+        onCancel={onClose}
+        onSubmit={submit}
+        disabled={!canPublish}
+        submitLabel={publishing ? "Publishing…" : "Publish"}
+      />
     </div>
   );
 }
@@ -612,52 +755,81 @@ function DuelForm({ onClose }: { onClose: () => void }) {
   const [title, setTitle] = useState("");
   const [technique, setTechnique] = useState("");
   const [aHandle, setAHandle] = useState(myHandle);
-  const [aPoster, setAPoster] = useState("");
   const [bHandle, setBHandle] = useState("");
-  const [bPoster, setBPoster] = useState("");
+  const [a, setA] = useState<{ local: string; upload: UploadResult | null; progress: number; uploading: boolean }>({ local: "", upload: null, progress: 0, uploading: false });
+  const [b, setB] = useState<{ local: string; upload: UploadResult | null; progress: number; uploading: boolean }>({ local: "", upload: null, progress: 0, uploading: false });
+  const [publishing, setPublishing] = useState(false);
   const aRef = useRef<HTMLInputElement>(null);
   const bRef = useRef<HTMLInputElement>(null);
 
   const pickImage = async (
     e: React.ChangeEvent<HTMLInputElement>,
-    setter: (s: string) => void,
+    side: "a" | "b",
   ) => {
     const f = e.target.files?.[0];
     if (!f) return;
-    if (!f.type.startsWith("image/")) {
-      toast.error("That file is not an image");
-      return;
-    }
+    if (!f.type.startsWith("image/")) { toast.error("That file is not an image"); return; }
     const mb = f.size / (1024 * 1024);
-    if (mb > MAX_IMAGE_MB) {
-      toast.error(`Image too large (${mb.toFixed(1)}MB). Max ${MAX_IMAGE_MB}MB.`);
-      return;
-    }
+    if (mb > MAX_IMAGE_MB) { toast.error(`Image too large (${mb.toFixed(1)}MB). Max ${MAX_IMAGE_MB}MB.`); return; }
+
+    const local = await fileToDataUrl(f);
+    const setSide = side === "a" ? setA : setB;
+    setSide({ local, upload: null, progress: 0, uploading: true });
     try {
-      setter(await fileToDataUrl(f));
-    } catch {
-      toast.error("Could not read that image");
+      const result = await uploadMedia(f, {
+        folder: "fighters",
+        filename: f.name.replace(/\.[^.]+$/, ""),
+        contentType: f.type,
+        onProgress: (p) => setSide((s) => ({ ...s, progress: p })),
+      });
+      setSide((s) => ({ ...s, upload: result, uploading: false, progress: 1 }));
+      toast.success(`Fighter ${side.toUpperCase()} image uploaded`);
+    } catch (err) {
+      toast.error((err as Error).message || "Could not upload image");
+      setSide({ local: "", upload: null, progress: 0, uploading: false });
     }
   };
 
-  const valid = !!title.trim() && !!technique.trim() && !!aHandle && !!bHandle;
+  const clearSide = (side: "a" | "b") => {
+    const setSide = side === "a" ? setA : setB;
+    setSide({ local: "", upload: null, progress: 0, uploading: false });
+    const ref = side === "a" ? aRef : bRef;
+    if (ref.current) ref.current.value = "";
+  };
 
-  const submit = () => {
-    if (!valid) return;
-    const fallback = "https://images.unsplash.com/photo-1517438476312-10d79c077509?w=800";
+  const missing: string[] = [];
+  if (!title.trim()) missing.push("title");
+  if (!technique.trim()) missing.push("technique");
+  if (!aHandle.trim()) missing.push("fighter A handle");
+  if (!bHandle.trim()) missing.push("fighter B handle");
+  if (!a.upload) missing.push("fighter A image");
+  if (!b.upload) missing.push("fighter B image");
+  const busy = a.uploading || b.uploading || publishing;
+  const canPublish = missing.length === 0 && !busy;
+
+  const submit = async () => {
+    if (!canPublish || !a.upload || !b.upload) {
+      toast.error(`Missing: ${missing.join(", ")}`);
+      return;
+    }
+    setPublishing(true);
     try {
-      storeActions.addDuel({
+      await storeActions.addDuel({
         title: title.trim(),
         technique: technique.trim(),
-        aHandle,
-        bHandle,
-        aPoster: aPoster || fallback,
-        bPoster: bPoster || fallback,
+        aHandle: aHandle.trim(),
+        bHandle: bHandle.trim(),
+        aPoster: a.upload.url,
+        bPoster: b.upload.url,
+        aPosterPath: a.upload.path,
+        bPosterPath: b.upload.path,
       });
       toast.success("Duel started — voting is live");
       onClose();
-    } catch {
-      toast.error("Could not save — try smaller images");
+    } catch (e) {
+      toast.error((e as Error).message || "Could not start duel");
+    } finally {
+      setPublishing(false);
     }
   };
 
@@ -665,33 +837,37 @@ function DuelForm({ onClose }: { onClose: () => void }) {
     <div className="space-y-5 pb-6">
       <FormHeader title="Start a Duel" desc="Pit two executions head-to-head." />
       <Field label="Title">
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value.slice(0, 80))}
-          placeholder="Which armbar is cleaner?"
-          className="profile-input"
-        />
+        <input value={title} onChange={(e) => setTitle(e.target.value.slice(0, 80))} placeholder="Which armbar is cleaner?" className="profile-input" />
       </Field>
       <Field label="Technique">
-        <input
-          value={technique}
-          onChange={(e) => setTechnique(e.target.value.slice(0, 60))}
-          placeholder="Armbar from guard"
-          className="profile-input"
-        />
+        <input value={technique} onChange={(e) => setTechnique(e.target.value.slice(0, 60))} placeholder="Armbar from guard" className="profile-input" />
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
           <p className="text-[10px] font-mono text-accent uppercase tracking-widest">Fighter A</p>
           <input value={aHandle} onChange={(e) => setAHandle(e.target.value)} placeholder="@handle" className="profile-input" />
-          <FighterImagePicker value={aPoster} onPick={() => aRef.current?.click()} onClear={() => setAPoster("")} />
-          <input ref={aRef} type="file" accept="image/*" className="hidden" onChange={(e) => pickImage(e, setAPoster)} />
+          <FighterImagePicker
+            value={a.local}
+            uploaded={!!a.upload}
+            uploading={a.uploading}
+            progress={a.progress}
+            onPick={() => aRef.current?.click()}
+            onClear={() => clearSide("a")}
+          />
+          <input ref={aRef} type="file" accept="image/*" className="hidden" onChange={(e) => pickImage(e, "a")} />
         </div>
         <div className="space-y-2">
           <p className="text-[10px] font-mono text-primary uppercase tracking-widest">Fighter B</p>
           <input value={bHandle} onChange={(e) => setBHandle(e.target.value)} placeholder="@handle" className="profile-input" />
-          <FighterImagePicker value={bPoster} onPick={() => bRef.current?.click()} onClear={() => setBPoster("")} />
-          <input ref={bRef} type="file" accept="image/*" className="hidden" onChange={(e) => pickImage(e, setBPoster)} />
+          <FighterImagePicker
+            value={b.local}
+            uploaded={!!b.upload}
+            uploading={b.uploading}
+            progress={b.progress}
+            onPick={() => bRef.current?.click()}
+            onClear={() => clearSide("b")}
+          />
+          <input ref={bRef} type="file" accept="image/*" className="hidden" onChange={(e) => pickImage(e, "b")} />
         </div>
       </div>
 
@@ -701,13 +877,23 @@ function DuelForm({ onClose }: { onClose: () => void }) {
           <DuelPreview
             title={title || "Duel title preview"}
             technique={technique || "Technique"}
-            a={{ handle: aHandle || "@fighter_a", poster: aPoster }}
-            b={{ handle: bHandle || "@fighter_b", poster: bPoster }}
+            a={{ handle: aHandle || "@fighter_a", poster: a.local }}
+            b={{ handle: bHandle || "@fighter_b", poster: b.local }}
           />
         </MobilePreviewFrame>
       </div>
 
-      <FormActions onCancel={onClose} onSubmit={submit} disabled={!valid} submitLabel="Start duel" />
+      {missing.length > 0 && (
+        <p className="text-[11px] text-muted-foreground">
+          Missing: <span className="text-foreground">{missing.join(", ")}</span>
+        </p>
+      )}
+      <FormActions
+        onCancel={onClose}
+        onSubmit={submit}
+        disabled={!canPublish}
+        submitLabel={publishing ? "Starting…" : "Start duel"}
+      />
     </div>
   );
 }
@@ -716,38 +902,58 @@ function FighterImagePicker({
   value,
   onPick,
   onClear,
+  uploaded,
+  uploading,
+  progress,
 }: {
   value: string;
   onPick: () => void;
   onClear: () => void;
+  uploaded: boolean;
+  uploading: boolean;
+  progress: number;
 }) {
   return (
-    <div className="flex items-center gap-2 p-2 rounded-xl bg-card border border-border">
-      <div className="size-12 rounded-lg overflow-hidden bg-secondary shrink-0 flex items-center justify-center">
-        {value ? (
-          <img src={value} alt="" className="w-full h-full object-cover" />
-        ) : (
-          <ImagePlus className="size-4 text-muted-foreground" />
-        )}
-      </div>
-      <div className="flex flex-col gap-1 flex-1">
-        <button
-          type="button"
-          onClick={onPick}
-          className="px-2 py-1 rounded-md bg-secondary border border-border text-[10px] font-bold uppercase tracking-wide"
-        >
-          {value ? "Replace" : "Pick image"}
-        </button>
-        {value && (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-2 p-2 rounded-xl bg-card border border-border">
+        <div className="size-12 rounded-lg overflow-hidden bg-secondary shrink-0 flex items-center justify-center relative">
+          {value ? (
+            <img src={value} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <ImagePlus className="size-4 text-muted-foreground" />
+          )}
+          {uploading && (
+            <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+              <Loader2 className="size-4 animate-spin text-white" />
+            </div>
+          )}
+          {uploaded && !uploading && (
+            <div className="absolute bottom-0 right-0 size-4 rounded-full bg-accent flex items-center justify-center">
+              <Check className="size-2.5 text-accent-foreground" />
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col gap-1 flex-1 min-w-0">
           <button
             type="button"
-            onClick={onClear}
-            className="text-[9px] font-mono text-muted-foreground uppercase tracking-wide"
+            onClick={onPick}
+            disabled={uploading}
+            className="px-2 py-1 rounded-md bg-secondary border border-border text-[10px] font-bold uppercase tracking-wide disabled:opacity-40"
           >
-            Remove
+            {value ? "Replace" : "Pick image"}
           </button>
-        )}
+          {value && !uploading && (
+            <button
+              type="button"
+              onClick={onClear}
+              className="text-[9px] font-mono text-muted-foreground uppercase tracking-wide text-left"
+            >
+              Remove
+            </button>
+          )}
+        </div>
       </div>
+      {uploading && <UploadProgressBar progress={progress} label="Uploading" />}
     </div>
   );
 }

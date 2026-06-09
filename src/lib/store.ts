@@ -1,5 +1,19 @@
 import { useSyncExternalStore } from "react";
 import { SESSIONS, GOALS, DUELS, FEED, type TrainingSession, type Goal, type FeedPost, type Duel, type Art } from "./mock-data";
+import { supabase } from "@/integrations/supabase/client";
+
+// Database types are auto-generated and currently empty for these tables.
+// Cast the client to bypass the strict generated schema until types regenerate.
+const db = supabase as unknown as {
+  from: (t: string) => {
+    select: (cols?: string) => {
+      order: (col: string, opts?: { ascending?: boolean }) => { limit: (n: number) => Promise<{ data: Record<string, unknown>[] | null; error: { message: string } | null }> };
+    };
+    insert: (row: Record<string, unknown>) => {
+      select: () => { single: () => Promise<{ data: Record<string, unknown> | null; error: { message: string } | null }> };
+    };
+  };
+};
 
 const KEY = "strive-state-v1";
 
@@ -56,6 +70,59 @@ function seed(): State {
 
 let state: State = load();
 const listeners = new Set<() => void>();
+
+// On boot, hydrate user posts/duels from backend so publications survive reloads.
+if (typeof window !== "undefined") {
+  void hydrateFromBackend();
+}
+
+async function hydrateFromBackend() {
+  try {
+    const [{ data: posts }, { data: duels }] = await Promise.all([
+      db.from("posts").select("*").order("created_at", { ascending: false }).limit(100),
+      db.from("duels").select("*").order("created_at", { ascending: false }).limit(100),
+    ]);
+    const remotePosts: FeedPost[] = (posts ?? []).map((r: Record<string, unknown>) => ({
+      id: String(r.id),
+      handle: String(r.handle),
+      meta: "You",
+      video: String(r.video),
+      poster: String(r.poster),
+      caption: String(r.caption),
+      tags: (r.tags as string[] | null) ?? [],
+      likes: Number(r.likes ?? 0),
+      comments: Number(r.comments ?? 0),
+      art: r.art as Art,
+      level: r.level as FeedPost["level"],
+    }));
+    const remoteDuels: Duel[] = (duels ?? []).map((r: Record<string, unknown>) => ({
+      id: String(r.id),
+      title: String(r.title),
+      technique: String(r.technique),
+      a: { handle: String(r.a_handle), poster: String(r.a_poster), votes: Number(r.a_votes ?? 0) },
+      b: { handle: String(r.b_handle), poster: String(r.b_poster), votes: Number(r.b_votes ?? 0) },
+    }));
+    set((s) => ({
+      ...s,
+      userPosts: remotePosts,
+      userDuels: remoteDuels,
+      likeCounts: {
+        ...s.likeCounts,
+        ...Object.fromEntries(remotePosts.map((p) => [p.id, p.likes])),
+      },
+      commentCounts: {
+        ...s.commentCounts,
+        ...Object.fromEntries(remotePosts.map((p) => [p.id, p.comments])),
+      },
+      voteCounts: {
+        ...s.voteCounts,
+        ...Object.fromEntries(remoteDuels.map((d) => [d.id, { a: d.a.votes, b: d.b.votes }])),
+      },
+    }));
+  } catch {
+    /* offline / network — keep local state */
+  }
+}
 
 function load(): State {
   if (typeof window === "undefined") return seed();
@@ -179,27 +246,48 @@ export const actions = {
     art: Art;
     level: FeedPost["level"];
     tags?: string[];
-  }) {
-    const post: FeedPost = {
-      id: crypto.randomUUID(),
-      handle: input.handle,
-      meta: "You",
-      video: input.video,
-      poster: input.poster,
-      caption: input.caption,
-      tags: input.tags?.length ? input.tags : [input.art, input.level],
-      likes: 0,
-      comments: 0,
-      art: input.art,
-      level: input.level,
-    };
-    set((s) => ({
-      ...s,
-      userPosts: [post, ...s.userPosts],
-      likeCounts: { ...s.likeCounts, [post.id]: 0 },
-      commentCounts: { ...s.commentCounts, [post.id]: 0 },
-    }));
-    return post;
+    videoPath?: string;
+    posterPath?: string;
+  }): Promise<FeedPost> {
+    const tags = input.tags?.length ? input.tags : [input.art, input.level];
+    return (async () => {
+      const { data, error } = await db
+        .from("posts")
+        .insert({
+          handle: input.handle,
+          caption: input.caption,
+          video: input.video,
+          poster: input.poster,
+          video_path: input.videoPath,
+          poster_path: input.posterPath,
+          art: input.art,
+          level: input.level,
+          tags,
+        })
+        .select()
+        .single();
+      if (error || !data) throw new Error(error?.message ?? "Could not save post");
+      const post: FeedPost = {
+        id: String(data.id),
+        handle: input.handle,
+        meta: "You",
+        video: input.video,
+        poster: input.poster,
+        caption: input.caption,
+        tags,
+        likes: 0,
+        comments: 0,
+        art: input.art,
+        level: input.level,
+      };
+      set((s) => ({
+        ...s,
+        userPosts: [post, ...s.userPosts],
+        likeCounts: { ...s.likeCounts, [post.id]: 0 },
+        commentCounts: { ...s.commentCounts, [post.id]: 0 },
+      }));
+      return post;
+    })();
   },
   addDuel(input: {
     title: string;
@@ -208,20 +296,39 @@ export const actions = {
     aPoster: string;
     bHandle: string;
     bPoster: string;
-  }) {
-    const duel: Duel = {
-      id: crypto.randomUUID(),
-      title: input.title,
-      technique: input.technique,
-      a: { poster: input.aPoster, handle: input.aHandle, votes: 0 },
-      b: { poster: input.bPoster, handle: input.bHandle, votes: 0 },
-    };
-    set((s) => ({
-      ...s,
-      userDuels: [duel, ...s.userDuels],
-      voteCounts: { ...s.voteCounts, [duel.id]: { a: 0, b: 0 } },
-    }));
-    return duel;
+    aPosterPath?: string;
+    bPosterPath?: string;
+  }): Promise<Duel> {
+    return (async () => {
+      const { data, error } = await db
+        .from("duels")
+        .insert({
+          title: input.title,
+          technique: input.technique,
+          a_handle: input.aHandle,
+          a_poster: input.aPoster,
+          a_poster_path: input.aPosterPath,
+          b_handle: input.bHandle,
+          b_poster: input.bPoster,
+          b_poster_path: input.bPosterPath,
+        })
+        .select()
+        .single();
+      if (error || !data) throw new Error(error?.message ?? "Could not save duel");
+      const duel: Duel = {
+        id: String(data.id),
+        title: input.title,
+        technique: input.technique,
+        a: { poster: input.aPoster, handle: input.aHandle, votes: 0 },
+        b: { poster: input.bPoster, handle: input.bHandle, votes: 0 },
+      };
+      set((s) => ({
+        ...s,
+        userDuels: [duel, ...s.userDuels],
+        voteCounts: { ...s.voteCounts, [duel.id]: { a: 0, b: 0 } },
+      }));
+      return duel;
+    })();
   },
   addAchievement(input: Omit<Achievement, "id" | "at">) {
     const a: Achievement = { ...input, id: crypto.randomUUID(), at: Date.now() };
