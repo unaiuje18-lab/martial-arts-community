@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { SESSIONS, GOALS, DUELS, FEED, type TrainingSession, type Goal } from "./mock-data";
+import { SESSIONS, GOALS, DUELS, FEED, type TrainingSession, type Goal, type FeedPost, type Duel, type Art } from "./mock-data";
 
 const KEY = "strive-state-v1";
 
@@ -8,6 +8,15 @@ export interface Comment {
   postId: string;
   author: string;
   text: string;
+  at: number;
+}
+
+export interface Achievement {
+  id: string;
+  kind: "promotion" | "competition" | "milestone";
+  title: string;
+  detail?: string;
+  date: string; // YYYY-MM-DD
   at: number;
 }
 
@@ -22,6 +31,9 @@ interface State {
   comments: Record<string, Comment[]>;
   sessions: TrainingSession[];
   goals: Goal[];
+  userPosts: FeedPost[];
+  userDuels: Duel[];
+  achievements: Achievement[];
 }
 
 function seed(): State {
@@ -36,6 +48,9 @@ function seed(): State {
     comments: {},
     sessions: [...SESSIONS],
     goals: [...GOALS],
+    userPosts: [],
+    userDuels: [],
+    achievements: [],
   };
 }
 
@@ -150,6 +165,63 @@ export const actions = {
   },
   addGoal(goal: Omit<Goal, "id">) {
     set((s) => ({ ...s, goals: [...s.goals, { ...goal, id: crypto.randomUUID() }] }));
+  },
+  addPost(input: {
+    handle: string;
+    caption: string;
+    video: string;
+    poster: string;
+    art: Art;
+    level: FeedPost["level"];
+    tags?: string[];
+  }) {
+    const post: FeedPost = {
+      id: crypto.randomUUID(),
+      handle: input.handle,
+      meta: "You",
+      video: input.video,
+      poster: input.poster,
+      caption: input.caption,
+      tags: input.tags?.length ? input.tags : [input.art, input.level],
+      likes: 0,
+      comments: 0,
+      art: input.art,
+      level: input.level,
+    };
+    set((s) => ({
+      ...s,
+      userPosts: [post, ...s.userPosts],
+      likeCounts: { ...s.likeCounts, [post.id]: 0 },
+      commentCounts: { ...s.commentCounts, [post.id]: 0 },
+    }));
+    return post;
+  },
+  addDuel(input: {
+    title: string;
+    technique: string;
+    aHandle: string;
+    aPoster: string;
+    bHandle: string;
+    bPoster: string;
+  }) {
+    const duel: Duel = {
+      id: crypto.randomUUID(),
+      title: input.title,
+      technique: input.technique,
+      a: { poster: input.aPoster, handle: input.aHandle, votes: 0 },
+      b: { poster: input.bPoster, handle: input.bHandle, votes: 0 },
+    };
+    set((s) => ({
+      ...s,
+      userDuels: [duel, ...s.userDuels],
+      voteCounts: { ...s.voteCounts, [duel.id]: { a: 0, b: 0 } },
+    }));
+    return duel;
+  },
+  addAchievement(input: Omit<Achievement, "id" | "at">) {
+    const a: Achievement = { ...input, id: crypto.randomUUID(), at: Date.now() };
+    set((s) => ({ ...s, achievements: [a, ...s.achievements] }));
+    return a;
   },
   reset() {
     state = seed();

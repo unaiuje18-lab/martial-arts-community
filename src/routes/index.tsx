@@ -16,8 +16,10 @@ export const Route = createFileRoute("/")({
 });
 
 function FeedPage() {
+  const userPosts = useStore((s) => s.userPosts);
+  const feed = [...userPosts, ...FEED];
   const [muted, setMuted] = useState(true);
-  const [activeId, setActiveId] = useState<string>(FEED[0].id);
+  const [activeId, setActiveId] = useState<string>(feed[0].id);
   const [openComments, setOpenComments] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -38,7 +40,7 @@ function FeedPage() {
     );
     root.querySelectorAll<HTMLElement>("[data-feed-card]").forEach((el) => obs.observe(el));
     return () => obs.disconnect();
-  }, []);
+  }, [userPosts.length]);
 
   return (
     <MobileShell fullBleed>
@@ -47,7 +49,7 @@ function FeedPage() {
         className="h-[100dvh] overflow-y-scroll snap-y snap-mandatory no-scrollbar"
         aria-label="Video feed"
       >
-        {FEED.map((post, i) => (
+        {feed.map((post, i) => (
           <FeedCard
             key={post.id}
             post={post}
