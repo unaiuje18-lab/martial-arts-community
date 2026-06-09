@@ -755,52 +755,81 @@ function DuelForm({ onClose }: { onClose: () => void }) {
   const [title, setTitle] = useState("");
   const [technique, setTechnique] = useState("");
   const [aHandle, setAHandle] = useState(myHandle);
-  const [aPoster, setAPoster] = useState("");
   const [bHandle, setBHandle] = useState("");
-  const [bPoster, setBPoster] = useState("");
+  const [a, setA] = useState<{ local: string; upload: UploadResult | null; progress: number; uploading: boolean }>({ local: "", upload: null, progress: 0, uploading: false });
+  const [b, setB] = useState<{ local: string; upload: UploadResult | null; progress: number; uploading: boolean }>({ local: "", upload: null, progress: 0, uploading: false });
+  const [publishing, setPublishing] = useState(false);
   const aRef = useRef<HTMLInputElement>(null);
   const bRef = useRef<HTMLInputElement>(null);
 
   const pickImage = async (
     e: React.ChangeEvent<HTMLInputElement>,
-    setter: (s: string) => void,
+    side: "a" | "b",
   ) => {
     const f = e.target.files?.[0];
     if (!f) return;
-    if (!f.type.startsWith("image/")) {
-      toast.error("That file is not an image");
-      return;
-    }
+    if (!f.type.startsWith("image/")) { toast.error("That file is not an image"); return; }
     const mb = f.size / (1024 * 1024);
-    if (mb > MAX_IMAGE_MB) {
-      toast.error(`Image too large (${mb.toFixed(1)}MB). Max ${MAX_IMAGE_MB}MB.`);
-      return;
-    }
+    if (mb > MAX_IMAGE_MB) { toast.error(`Image too large (${mb.toFixed(1)}MB). Max ${MAX_IMAGE_MB}MB.`); return; }
+
+    const local = await fileToDataUrl(f);
+    const setSide = side === "a" ? setA : setB;
+    setSide({ local, upload: null, progress: 0, uploading: true });
     try {
-      setter(await fileToDataUrl(f));
-    } catch {
-      toast.error("Could not read that image");
+      const result = await uploadMedia(f, {
+        folder: "fighters",
+        filename: f.name.replace(/\.[^.]+$/, ""),
+        contentType: f.type,
+        onProgress: (p) => setSide((s) => ({ ...s, progress: p })),
+      });
+      setSide((s) => ({ ...s, upload: result, uploading: false, progress: 1 }));
+      toast.success(`Fighter ${side.toUpperCase()} image uploaded`);
+    } catch (err) {
+      toast.error((err as Error).message || "Could not upload image");
+      setSide({ local: "", upload: null, progress: 0, uploading: false });
     }
   };
 
-  const valid = !!title.trim() && !!technique.trim() && !!aHandle && !!bHandle;
+  const clearSide = (side: "a" | "b") => {
+    const setSide = side === "a" ? setA : setB;
+    setSide({ local: "", upload: null, progress: 0, uploading: false });
+    const ref = side === "a" ? aRef : bRef;
+    if (ref.current) ref.current.value = "";
+  };
 
-  const submit = () => {
-    if (!valid) return;
-    const fallback = "https://images.unsplash.com/photo-1517438476312-10d79c077509?w=800";
+  const missing: string[] = [];
+  if (!title.trim()) missing.push("title");
+  if (!technique.trim()) missing.push("technique");
+  if (!aHandle.trim()) missing.push("fighter A handle");
+  if (!bHandle.trim()) missing.push("fighter B handle");
+  if (!a.upload) missing.push("fighter A image");
+  if (!b.upload) missing.push("fighter B image");
+  const busy = a.uploading || b.uploading || publishing;
+  const canPublish = missing.length === 0 && !busy;
+
+  const submit = async () => {
+    if (!canPublish || !a.upload || !b.upload) {
+      toast.error(`Missing: ${missing.join(", ")}`);
+      return;
+    }
+    setPublishing(true);
     try {
-      storeActions.addDuel({
+      await storeActions.addDuel({
         title: title.trim(),
         technique: technique.trim(),
-        aHandle,
-        bHandle,
-        aPoster: aPoster || fallback,
-        bPoster: bPoster || fallback,
+        aHandle: aHandle.trim(),
+        bHandle: bHandle.trim(),
+        aPoster: a.upload.url,
+        bPoster: b.upload.url,
+        aPosterPath: a.upload.path,
+        bPosterPath: b.upload.path,
       });
       toast.success("Duel started — voting is live");
       onClose();
-    } catch {
-      toast.error("Could not save — try smaller images");
+    } catch (e) {
+      toast.error((e as Error).message || "Could not start duel");
+    } finally {
+      setPublishing(false);
     }
   };
 
@@ -808,33 +837,37 @@ function DuelForm({ onClose }: { onClose: () => void }) {
     <div className="space-y-5 pb-6">
       <FormHeader title="Start a Duel" desc="Pit two executions head-to-head." />
       <Field label="Title">
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value.slice(0, 80))}
-          placeholder="Which armbar is cleaner?"
-          className="profile-input"
-        />
+        <input value={title} onChange={(e) => setTitle(e.target.value.slice(0, 80))} placeholder="Which armbar is cleaner?" className="profile-input" />
       </Field>
       <Field label="Technique">
-        <input
-          value={technique}
-          onChange={(e) => setTechnique(e.target.value.slice(0, 60))}
-          placeholder="Armbar from guard"
-          className="profile-input"
-        />
+        <input value={technique} onChange={(e) => setTechnique(e.target.value.slice(0, 60))} placeholder="Armbar from guard" className="profile-input" />
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
           <p className="text-[10px] font-mono text-accent uppercase tracking-widest">Fighter A</p>
           <input value={aHandle} onChange={(e) => setAHandle(e.target.value)} placeholder="@handle" className="profile-input" />
-          <FighterImagePicker value={aPoster} onPick={() => aRef.current?.click()} onClear={() => setAPoster("")} />
-          <input ref={aRef} type="file" accept="image/*" className="hidden" onChange={(e) => pickImage(e, setAPoster)} />
+          <FighterImagePicker
+            value={a.local}
+            uploaded={!!a.upload}
+            uploading={a.uploading}
+            progress={a.progress}
+            onPick={() => aRef.current?.click()}
+            onClear={() => clearSide("a")}
+          />
+          <input ref={aRef} type="file" accept="image/*" className="hidden" onChange={(e) => pickImage(e, "a")} />
         </div>
         <div className="space-y-2">
           <p className="text-[10px] font-mono text-primary uppercase tracking-widest">Fighter B</p>
           <input value={bHandle} onChange={(e) => setBHandle(e.target.value)} placeholder="@handle" className="profile-input" />
-          <FighterImagePicker value={bPoster} onPick={() => bRef.current?.click()} onClear={() => setBPoster("")} />
-          <input ref={bRef} type="file" accept="image/*" className="hidden" onChange={(e) => pickImage(e, setBPoster)} />
+          <FighterImagePicker
+            value={b.local}
+            uploaded={!!b.upload}
+            uploading={b.uploading}
+            progress={b.progress}
+            onPick={() => bRef.current?.click()}
+            onClear={() => clearSide("b")}
+          />
+          <input ref={bRef} type="file" accept="image/*" className="hidden" onChange={(e) => pickImage(e, "b")} />
         </div>
       </div>
 
@@ -844,13 +877,23 @@ function DuelForm({ onClose }: { onClose: () => void }) {
           <DuelPreview
             title={title || "Duel title preview"}
             technique={technique || "Technique"}
-            a={{ handle: aHandle || "@fighter_a", poster: aPoster }}
-            b={{ handle: bHandle || "@fighter_b", poster: bPoster }}
+            a={{ handle: aHandle || "@fighter_a", poster: a.local }}
+            b={{ handle: bHandle || "@fighter_b", poster: b.local }}
           />
         </MobilePreviewFrame>
       </div>
 
-      <FormActions onCancel={onClose} onSubmit={submit} disabled={!valid} submitLabel="Start duel" />
+      {missing.length > 0 && (
+        <p className="text-[11px] text-muted-foreground">
+          Missing: <span className="text-foreground">{missing.join(", ")}</span>
+        </p>
+      )}
+      <FormActions
+        onCancel={onClose}
+        onSubmit={submit}
+        disabled={!canPublish}
+        submitLabel={publishing ? "Starting…" : "Start duel"}
+      />
     </div>
   );
 }
