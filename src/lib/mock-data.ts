@@ -28,6 +28,17 @@ export const ARTS: Art[] = [
 
 export const LEVELS = ["Beginner", "Intermediate", "Advanced"] as const;
 
+// Belt systems per discipline. Arts not listed here use years of experience instead.
+export const BELTS: Partial<Record<Art, string[]>> = {
+  BJJ: ["White", "Blue", "Purple", "Brown", "Black"],
+  Judo: ["White", "Yellow", "Orange", "Green", "Blue", "Brown", "Black"],
+  Karate: ["White", "Yellow", "Orange", "Green", "Blue", "Purple", "Brown", "Black"],
+};
+
+export function hasBelts(art: Art): boolean {
+  return Boolean(BELTS[art]);
+}
+
 export const CONTENT_PREFS = [
   "Techniques",
   "Fights",
