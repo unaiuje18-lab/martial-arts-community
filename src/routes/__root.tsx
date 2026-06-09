@@ -14,6 +14,8 @@ import { reportLovableError, installGlobalErrorHandlers } from "../lib/lovable-e
 import { installPerformanceObservers } from "../lib/metrics";
 import { IncidentsPanel } from "@/components/IncidentsPanel";
 import { Toaster } from "@/components/ui/sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { auth as localAuth } from "@/lib/auth";
 
 function NotFoundComponent() {
   return (
@@ -131,11 +133,39 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const router = useRouter();
 
   useEffect(() => {
     installGlobalErrorHandlers();
     installPerformanceObservers();
   }, []);
+
+  // Single auth-state subscriber: keeps local onboarding storage in sync,
+  // invalidates router/queries on identity transitions, ignores token refresh
+  // noise. Wired here so every route benefits.
+  useEffect(() => {
+    // Prime active user id from existing session.
+    supabase.auth.getUser().then(({ data }) => {
+      localAuth.setActiveUserId(data.user?.id ?? null);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (
+        event !== "SIGNED_IN" &&
+        event !== "SIGNED_OUT" &&
+        event !== "USER_UPDATED"
+      ) {
+        return;
+      }
+      localAuth.setActiveUserId(session?.user?.id ?? null);
+      router.invalidate();
+      if (event !== "SIGNED_OUT") {
+        queryClient.invalidateQueries();
+      } else {
+        queryClient.clear();
+      }
+    });
+    return () => sub.subscription.unsubscribe();
+  }, [router, queryClient]);
 
   return (
     <QueryClientProvider client={queryClient}>
