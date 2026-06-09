@@ -12,7 +12,15 @@ export interface LocalUser {
   prefs?: string[];
   bio?: string;
   avatar?: string;
-  ranks?: Record<string, { type: "belt" | "years"; value: string; system?: string }>;
+  ranks?: Record<
+    string,
+    {
+      type: "belt" | "years";
+      value: string;
+      system?: string;
+      history?: { belt: string; date: string }[]; // date as YYYY-MM
+    }
+  >;
   createdAt: number;
 }
 
