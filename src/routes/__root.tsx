@@ -89,14 +89,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "STRIVE — Train. Learn. Compete." },
+      { title: "Martial Arts Community" },
       { name: "description", content: "Mobile-first martial arts training, learning and community. Vertical video feed, technique duels, and a private training tracker." },
       { name: "author", content: "Lovable" },
-      { property: "og:title", content: "STRIVE — Train. Learn. Compete." },
-      { property: "og:description", content: "Vertical video feed, technique duels, and a private training tracker for martial artists." },
+      { property: "og:title", content: "Martial Arts Community" },
+      { property: "og:description", content: "Mobile-first martial arts training, learning and community. Vertical video feed, technique duels, and a private training tracker." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "Martial Arts Community" },
+      { name: "twitter:description", content: "Mobile-first martial arts training, learning and community. Vertical video feed, technique duels, and a private training tracker." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/3bb879dd-6406-4268-a8a5-a1f3aa557858/id-preview-f2a5683b--3bcbb2f5-2426-478d-86b6-829d3268ed26.lovable.app-1781017091204.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/3bb879dd-6406-4268-a8a5-a1f3aa557858/id-preview-f2a5683b--3bcbb2f5-2426-478d-86b6-829d3268ed26.lovable.app-1781017091204.png" },
     ],
     links: [
       {
