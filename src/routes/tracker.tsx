@@ -428,8 +428,8 @@ function AddSessionSheet({ onClose, initialDate }: { onClose: () => void; initia
       effort,
       notes: notes.trim() || undefined,
       date: new Date(date).toISOString(),
+      completed,
     });
-    void completed;
     onClose();
   };
 
