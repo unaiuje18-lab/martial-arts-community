@@ -14,7 +14,99 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      duels: {
+        Row: {
+          a_handle: string
+          a_poster: string
+          a_poster_path: string | null
+          a_votes: number
+          b_handle: string
+          b_poster: string
+          b_poster_path: string | null
+          b_votes: number
+          created_at: string
+          id: string
+          technique: string
+          title: string
+        }
+        Insert: {
+          a_handle: string
+          a_poster: string
+          a_poster_path?: string | null
+          a_votes?: number
+          b_handle: string
+          b_poster: string
+          b_poster_path?: string | null
+          b_votes?: number
+          created_at?: string
+          id?: string
+          technique: string
+          title: string
+        }
+        Update: {
+          a_handle?: string
+          a_poster?: string
+          a_poster_path?: string | null
+          a_votes?: number
+          b_handle?: string
+          b_poster?: string
+          b_poster_path?: string | null
+          b_votes?: number
+          created_at?: string
+          id?: string
+          technique?: string
+          title?: string
+        }
+        Relationships: []
+      }
+      posts: {
+        Row: {
+          art: string
+          caption: string
+          comments: number
+          created_at: string
+          handle: string
+          id: string
+          level: string
+          likes: number
+          poster: string
+          poster_path: string | null
+          tags: string[]
+          video: string
+          video_path: string | null
+        }
+        Insert: {
+          art: string
+          caption: string
+          comments?: number
+          created_at?: string
+          handle: string
+          id?: string
+          level: string
+          likes?: number
+          poster: string
+          poster_path?: string | null
+          tags?: string[]
+          video: string
+          video_path?: string | null
+        }
+        Update: {
+          art?: string
+          caption?: string
+          comments?: number
+          created_at?: string
+          handle?: string
+          id?: string
+          level?: string
+          likes?: number
+          poster?: string
+          poster_path?: string | null
+          tags?: string[]
+          video?: string
+          video_path?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
