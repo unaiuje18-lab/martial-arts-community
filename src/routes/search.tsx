@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Search as SearchIcon, TrendingUp, Sparkles } from "lucide-react";
+import { Search as SearchIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { MobileShell } from "@/components/MobileShell";
-import { FEED, TRENDING, ARTS, formatCount } from "@/lib/mock-data";
+import { ARTS, formatCount } from "@/lib/mock-data";
+import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/search")({
   head: () => ({
@@ -17,10 +18,11 @@ export const Route = createFileRoute("/search")({
 function SearchPage() {
   const [q, setQ] = useState("");
   const [art, setArt] = useState<string | null>(null);
+  const userPosts = useStore((s) => s.userPosts);
 
   const results = useMemo(() => {
     const term = q.trim().toLowerCase();
-    return FEED.filter((p) => {
+    return userPosts.filter((p) => {
       if (art && p.art !== art) return false;
       if (!term) return true;
       return (
@@ -30,7 +32,7 @@ function SearchPage() {
         p.art.toLowerCase().includes(term)
       );
     });
-  }, [q, art]);
+  }, [q, art, userPosts]);
 
   return (
     <MobileShell>
@@ -55,29 +57,6 @@ function SearchPage() {
             <Chip key={a} active={art === a} onClick={() => setArt(a)} label={a} />
           ))}
         </div>
-
-        {q.trim().length === 0 && !art && (
-          <>
-            <section className="space-y-3">
-              <SectionLabel icon={<TrendingUp className="size-3.5" />}>Trending techniques</SectionLabel>
-              <div className="flex flex-wrap gap-2">
-                {TRENDING.map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => setQ(t)}
-                    className="px-3 py-1.5 rounded-full bg-secondary border border-border text-xs font-medium hover:border-accent/60 transition-colors"
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            <section className="space-y-3">
-              <SectionLabel icon={<Sparkles className="size-3.5" />}>For you</SectionLabel>
-            </section>
-          </>
-        )}
 
         <section className="grid grid-cols-2 gap-3">
           {results.map((p) => (
@@ -125,11 +104,3 @@ function Chip({ active, onClick, label }: { active: boolean; onClick: () => void
   );
 }
 
-function SectionLabel({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-      {icon}
-      {children}
-    </div>
-  );
-}

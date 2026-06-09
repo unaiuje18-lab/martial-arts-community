@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { logIncident } from "@/lib/incident";
 import { ArrowLeft, ChevronLeft, ChevronRight, Lock, Plus, Trash2, X, Calendar as CalendarIcon, Link2, Image as ImageIcon, ExternalLink } from "lucide-react";
 import { MobileShell } from "@/components/MobileShell";
-import { ARTS, ME, type Art } from "@/lib/mock-data";
+import { ARTS, type Art } from "@/lib/mock-data";
 import { actions, computeStreak, lastTrainingDate, localDayKey, useStore, type ScheduleSlot } from "@/lib/store";
 import type { TrainingSession } from "@/lib/mock-data";
 import { processImage, ImageValidationError } from "@/lib/image";
