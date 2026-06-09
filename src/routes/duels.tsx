@@ -1,8 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
 import { MessageCircle, CheckCircle2 } from "lucide-react";
 import { MobileShell } from "@/components/MobileShell";
 import { DUELS, formatCount, type Duel } from "@/lib/mock-data";
+import { actions, useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/duels")({
   head: () => ({
@@ -35,11 +35,12 @@ function DuelsPage() {
 }
 
 function DuelCard({ duel }: { duel: Duel }) {
-  const [vote, setVote] = useState<"a" | "b" | null>(null);
-  const aVotes = duel.a.votes + (vote === "a" ? 1 : 0);
-  const bVotes = duel.b.votes + (vote === "b" ? 1 : 0);
+  const vote = useStore((s) => s.votes[duel.id] ?? null);
+  const counts = useStore((s) => s.voteCounts[duel.id] ?? { a: duel.a.votes, b: duel.b.votes });
+  const aVotes = counts.a;
+  const bVotes = counts.b;
   const total = aVotes + bVotes;
-  const aPct = Math.round((aVotes / total) * 100);
+  const aPct = total > 0 ? Math.round((aVotes / total) * 100) : 50;
   const bPct = 100 - aPct;
 
   return (
@@ -59,7 +60,7 @@ function DuelCard({ duel }: { duel: Duel }) {
           pct={aPct}
           selected={vote === "a"}
           voted={vote !== null}
-          onClick={() => setVote((v) => (v === "a" ? null : "a"))}
+          onClick={() => actions.vote(duel.id, "a")}
         />
         <DuelSide
           poster={duel.b.poster}
@@ -68,7 +69,7 @@ function DuelCard({ duel }: { duel: Duel }) {
           pct={bPct}
           selected={vote === "b"}
           voted={vote !== null}
-          onClick={() => setVote((v) => (v === "b" ? null : "b"))}
+          onClick={() => actions.vote(duel.id, "b")}
         />
       </div>
 

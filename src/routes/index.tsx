@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
-import { Heart, MessageCircle, Bookmark, Share2, Volume2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Heart, MessageCircle, Bookmark, Share2, Volume2, VolumeX, Play, X, Send } from "lucide-react";
 import { MobileShell } from "@/components/MobileShell";
 import { FEED, formatCount, type FeedPost } from "@/lib/mock-data";
+import { actions, useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -15,50 +16,136 @@ export const Route = createFileRoute("/")({
 });
 
 function FeedPage() {
+  const [muted, setMuted] = useState(true);
+  const [activeId, setActiveId] = useState<string>(FEED[0].id);
+  const [openComments, setOpenComments] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const root = containerRef.current;
+    if (!root) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        const best = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (best) {
+          const id = (best.target as HTMLElement).dataset.id;
+          if (id) setActiveId(id);
+        }
+      },
+      { root, threshold: [0.6] },
+    );
+    root.querySelectorAll<HTMLElement>("[data-feed-card]").forEach((el) => obs.observe(el));
+    return () => obs.disconnect();
+  }, []);
+
   return (
     <MobileShell fullBleed>
       <div
+        ref={containerRef}
         className="h-[100dvh] overflow-y-scroll snap-y snap-mandatory no-scrollbar"
         aria-label="Video feed"
       >
         {FEED.map((post, i) => (
-          <FeedCard key={post.id} post={post} priority={i === 0} />
+          <FeedCard
+            key={post.id}
+            post={post}
+            priority={i === 0}
+            active={activeId === post.id}
+            muted={muted}
+            onToggleMute={() => setMuted((v) => !v)}
+            onOpenComments={() => setOpenComments(post.id)}
+          />
         ))}
       </div>
+      {openComments && (
+        <CommentsSheet postId={openComments} onClose={() => setOpenComments(null)} />
+      )}
     </MobileShell>
   );
 }
 
-function FeedCard({ post, priority }: { post: FeedPost; priority: boolean }) {
-  const [liked, setLiked] = useState(false);
-  const [saved, setSaved] = useState(false);
+function FeedCard({
+  post,
+  priority,
+  active,
+  muted,
+  onToggleMute,
+  onOpenComments,
+}: {
+  post: FeedPost;
+  priority: boolean;
+  active: boolean;
+  muted: boolean;
+  onToggleMute: () => void;
+  onOpenComments: () => void;
+}) {
+  const liked = useStore((s) => !!s.likes[post.id]);
+  const saved = useStore((s) => !!s.saves[post.id]);
+  const following = useStore((s) => !!s.follows[post.handle]);
+  const likeCount = useStore((s) => s.likeCounts[post.id] ?? post.likes);
+  const commentCount = useStore((s) => s.commentCounts[post.id] ?? post.comments);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [paused, setPaused] = useState(false);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (active && !paused) v.play().catch(() => {});
+    else v.pause();
+  }, [active, paused]);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (v) v.muted = muted;
+  }, [muted]);
 
   return (
-    <section className="relative h-[100dvh] w-full snap-start overflow-hidden">
-      <img
-        src={post.poster}
-        alt=""
-        width={768}
-        height={1344}
-        loading={priority ? "eager" : "lazy"}
-        className="absolute inset-0 w-full h-full object-cover"
+    <section
+      data-feed-card
+      data-id={post.id}
+      className="relative h-[100dvh] w-full snap-start overflow-hidden bg-black"
+    >
+      <video
+        ref={videoRef}
+        src={post.video}
+        poster={post.poster}
+        muted={muted}
+        loop
+        playsInline
+        preload={priority ? "auto" : "metadata"}
+        onClick={() => setPaused((p) => !p)}
+        className="absolute inset-0 w-full h-full object-cover cursor-pointer"
       />
+      {paused && (
+        <button
+          onClick={() => setPaused(false)}
+          className="absolute inset-0 flex items-center justify-center bg-black/20"
+          aria-label="Play"
+        >
+          <div className="size-16 rounded-full bg-black/50 backdrop-blur flex items-center justify-center">
+            <Play className="size-7 text-white fill-white" />
+          </div>
+        </button>
+      )}
       {/* Top bar */}
       <div className="absolute top-0 inset-x-0 z-10 pt-[max(1rem,env(safe-area-inset-top))] px-5 flex items-center justify-between">
         <h1 className="font-display text-2xl uppercase tracking-tight italic">
           STRIVE<span className="text-accent">.</span>
         </h1>
         <button
+          onClick={onToggleMute}
           className="size-8 rounded-full bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center text-white/80"
-          aria-label="Mute audio"
+          aria-label={muted ? "Unmute" : "Mute"}
         >
-          <Volume2 className="size-4" />
+          {muted ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
         </button>
       </div>
 
       {/* Bottom overlay */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-black/30 flex flex-col justify-end p-5 pb-28">
-        <div className="flex justify-between items-end gap-4">
+      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-black/30 flex flex-col justify-end p-5 pb-28 pointer-events-none">
+        <div className="flex justify-between items-end gap-4 pointer-events-auto">
           <div className="space-y-3 max-w-[78%]">
             <div className="flex items-center gap-2">
               <div className="size-10 rounded-full border-2 border-accent overflow-hidden bg-secondary" />
@@ -66,8 +153,15 @@ function FeedCard({ post, priority }: { post: FeedPost; priority: boolean }) {
                 <p className="font-semibold text-sm tracking-tight text-white">{post.handle}</p>
                 <p className="text-[10px] font-mono text-accent uppercase">{post.meta}</p>
               </div>
-              <button className="ml-2 bg-accent text-accent-foreground text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wide active:scale-95 transition-transform">
-                Follow
+              <button
+                onClick={() => actions.toggleFollow(post.handle)}
+                className={`ml-2 text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wide active:scale-95 transition-transform ${
+                  following
+                    ? "bg-white/10 text-white border border-white/30"
+                    : "bg-accent text-accent-foreground"
+                }`}
+              >
+                {following ? "Following" : "Follow"}
               </button>
             </div>
             <p className="text-sm font-medium leading-snug text-white text-pretty">
@@ -88,21 +182,32 @@ function FeedCard({ post, priority }: { post: FeedPost; priority: boolean }) {
           <div className="flex flex-col gap-5 items-center">
             <FeedAction
               icon={<Heart className={`size-5 ${liked ? "fill-accent text-accent" : ""}`} />}
-              label={formatCount(post.likes + (liked ? 1 : 0))}
-              onClick={() => setLiked((v) => !v)}
+              label={formatCount(likeCount)}
+              onClick={() => actions.toggleLike(post.id)}
               active={liked}
             />
             <FeedAction
               icon={<MessageCircle className="size-5" />}
-              label={formatCount(post.comments)}
+              label={formatCount(commentCount)}
+              onClick={onOpenComments}
             />
             <FeedAction
               icon={<Bookmark className={`size-5 ${saved ? "fill-accent text-accent" : ""}`} />}
               label="Save"
-              onClick={() => setSaved((v) => !v)}
+              onClick={() => actions.toggleSave(post.id)}
               active={saved}
             />
-            <FeedAction icon={<Share2 className="size-5" />} label="Share" />
+            <FeedAction
+              icon={<Share2 className="size-5" />}
+              label="Share"
+              onClick={() => {
+                if (navigator.share)
+                  navigator
+                    .share({ title: post.handle, text: post.caption, url: window.location.href })
+                    .catch(() => {});
+                else navigator.clipboard?.writeText(window.location.href);
+              }}
+            />
           </div>
         </div>
       </div>
@@ -132,5 +237,76 @@ function FeedAction({
       </div>
       <span className="text-[10px] font-mono text-white">{label}</span>
     </button>
+  );
+}
+
+function CommentsSheet({ postId, onClose }: { postId: string; onClose: () => void }) {
+  const comments = useStore((s) => s.comments[postId] ?? []);
+  const [text, setText] = useState("");
+  const submit = () => {
+    if (!text.trim()) return;
+    actions.addComment(postId, text);
+    setText("");
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-end" role="dialog" aria-modal="true">
+      <button
+        aria-label="Close comments"
+        onClick={onClose}
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+      />
+      <div className="relative w-full max-h-[75dvh] bg-card border-t border-border rounded-t-2xl flex flex-col animate-snap-in">
+        <div className="flex items-center justify-between p-4 border-b border-border">
+          <h3 className="font-display uppercase italic tracking-tight">
+            Comments · {comments.length}
+          </h3>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="size-8 rounded-full bg-secondary flex items-center justify-center"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {comments.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              Be the first to drop analysis.
+            </p>
+          )}
+          {comments.map((c) => (
+            <div key={c.id} className="flex gap-3">
+              <div className="size-8 rounded-full bg-accent/20 border border-accent/40 shrink-0" />
+              <div className="flex-1">
+                <p className="text-[11px] font-mono text-accent uppercase">{c.author}</p>
+                <p className="text-sm leading-snug">{c.text}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit();
+          }}
+          className="flex items-center gap-2 p-3 border-t border-border pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+        >
+          <input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Add analysis…"
+            className="flex-1 bg-secondary rounded-full px-4 py-2.5 text-sm outline-none focus:ring-1 focus:ring-accent"
+          />
+          <button
+            type="submit"
+            disabled={!text.trim()}
+            className="size-10 rounded-full bg-accent text-accent-foreground flex items-center justify-center disabled:opacity-40"
+            aria-label="Send"
+          >
+            <Send className="size-4" />
+          </button>
+        </form>
+      </div>
+    </div>
   );
 }
