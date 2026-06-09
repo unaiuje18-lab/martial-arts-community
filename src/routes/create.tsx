@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Upload,
   Swords,
@@ -19,6 +19,10 @@ import {
   Volume2,
   CheckCircle2,
   TrendingUp,
+  Film,
+  ImagePlus,
+  Trash2,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { MobileShell } from "@/components/MobileShell";
@@ -44,6 +48,61 @@ export const Route = createFileRoute("/create")({
 });
 
 type ActionKey = "video" | "duel" | "training" | "goal" | "achievement";
+
+// ---- Local persistence helpers ----
+const MAX_VIDEO_MB = 12;
+const MAX_IMAGE_MB = 3;
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result as string);
+    r.onerror = () => rej(new Error("Could not read file"));
+    r.readAsDataURL(file);
+  });
+}
+
+function generateVideoPoster(videoSrc: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const v = document.createElement("video");
+    v.preload = "metadata";
+    v.muted = true;
+    v.playsInline = true;
+    v.crossOrigin = "anonymous";
+    v.src = videoSrc;
+    const cleanup = () => {
+      v.removeAttribute("src");
+      v.load();
+    };
+    v.onloadedmetadata = () => {
+      try {
+        v.currentTime = Math.min(0.5, (v.duration || 1) / 4);
+      } catch {
+        reject(new Error("seek-fail"));
+      }
+    };
+    v.onseeked = () => {
+      try {
+        const c = document.createElement("canvas");
+        const w = (c.width = Math.min(720, v.videoWidth || 720));
+        const h = (c.height = Math.round(w * ((v.videoHeight || 1280) / (v.videoWidth || 720))));
+        const ctx = c.getContext("2d");
+        if (!ctx) throw new Error("no-ctx");
+        ctx.drawImage(v, 0, 0, w, h);
+        const url = c.toDataURL("image/jpeg", 0.7);
+        cleanup();
+        resolve(url);
+      } catch (e) {
+        cleanup();
+        reject(e);
+      }
+    };
+    v.onerror = () => {
+      cleanup();
+      reject(new Error("video-load-fail"));
+    };
+  });
+}
 
 const ACTION_LIST: { key: ActionKey; icon: typeof Upload; title: string; desc: string }[] = [
   { key: "video", icon: Upload, title: "Upload Video", desc: "Share a technique or training clip" },
