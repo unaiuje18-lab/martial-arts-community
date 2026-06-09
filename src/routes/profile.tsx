@@ -227,10 +227,16 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
     setPrefs((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
   };
 
-  const setRankValue = (art: Art, value: string) => {
+  const setRankValue = (art: Art, value: string, system?: string) => {
     setRanks((prev) => ({
       ...prev,
-      [art]: { type: hasBelts(art) ? "belt" : "years", value },
+      [art]: { type: hasBelts(art) ? "belt" : "years", value, system },
+    }));
+  };
+  const setRankSystem = (art: Art, system: string) => {
+    setRanks((prev) => ({
+      ...prev,
+      [art]: { type: "belt", value: "", system },
     }));
   };
 
