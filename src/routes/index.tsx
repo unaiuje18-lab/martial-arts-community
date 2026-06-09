@@ -1,9 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { Heart, MessageCircle, Bookmark, Share2, Volume2, VolumeX, Play, X, Send } from "lucide-react";
+import { Heart, MessageCircle, Bookmark, Share2, Volume2, VolumeX, Play, X, Send, RefreshCw, AlertTriangle, Inbox } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { MobileShell } from "@/components/MobileShell";
 import { FEED, formatCount, type FeedPost } from "@/lib/mock-data";
-import { actions, useStore } from "@/lib/store";
+import { actions, useStore, fetchBackendFeed, applyBackendFeed } from "@/lib/store";
+import { Skeleton } from "@/components/ui/skeleton";
+import { reportLovableError } from "@/lib/lovable-error-reporting";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -17,6 +20,24 @@ export const Route = createFileRoute("/")({
 
 function FeedPage() {
   const userPosts = useStore((s) => s.userPosts);
+  const hydration = useQuery({
+    queryKey: ["feed", "hydration"],
+    queryFn: async () => {
+      const data = await fetchBackendFeed();
+      applyBackendFeed(data);
+      return data;
+    },
+    // Critical query: aggressive retry with exponential backoff via QueryClient
+    // defaults. Keep cached for a minute so back-nav is instant.
+    staleTime: 60_000,
+  });
+
+  useEffect(() => {
+    if (hydration.error) {
+      reportLovableError(hydration.error, { source: "feed_hydration" }, { handled: true });
+    }
+  }, [hydration.error]);
+
   const feed = [...userPosts, ...FEED];
   const [muted, setMuted] = useState(true);
   const [activeId, setActiveId] = useState<string>(feed[0].id);
@@ -42,8 +63,36 @@ function FeedPage() {
     return () => obs.disconnect();
   }, [userPosts.length]);
 
+  // First-paint loading: only when we have no fallback content to show.
+  const isInitialLoading = hydration.isPending && userPosts.length === 0 && FEED.length === 0;
+  const hasError = !!hydration.error;
+  const isEmpty = !hydration.isPending && feed.length === 0;
+
+  if (isInitialLoading) {
+    return (
+      <MobileShell fullBleed>
+        <FeedSkeleton />
+      </MobileShell>
+    );
+  }
+
+  if (isEmpty) {
+    return (
+      <MobileShell fullBleed>
+        <FeedEmpty onRetry={() => hydration.refetch()} />
+      </MobileShell>
+    );
+  }
+
   return (
     <MobileShell fullBleed>
+      {hasError && (
+        <FeedErrorBanner
+          error={hydration.error as Error}
+          onRetry={() => hydration.refetch()}
+          isRetrying={hydration.isFetching}
+        />
+      )}
       <div
         ref={containerRef}
         className="h-[100dvh] overflow-y-scroll snap-y snap-mandatory no-scrollbar"
@@ -65,6 +114,89 @@ function FeedPage() {
         <CommentsSheet postId={openComments} onClose={() => setOpenComments(null)} />
       )}
     </MobileShell>
+  );
+}
+
+function FeedSkeleton() {
+  return (
+    <div className="h-[100dvh] w-full bg-black relative overflow-hidden">
+      <Skeleton className="absolute inset-0 rounded-none bg-white/5" />
+      <div className="absolute top-0 inset-x-0 pt-[max(1rem,env(safe-area-inset-top))] px-5 flex items-center justify-between">
+        <Skeleton className="h-6 w-24 bg-white/10" />
+        <Skeleton className="size-8 rounded-full bg-white/10" />
+      </div>
+      <div className="absolute inset-x-0 bottom-0 p-5 pb-28 space-y-3">
+        <div className="flex items-center gap-2">
+          <Skeleton className="size-10 rounded-full bg-white/10" />
+          <div className="space-y-2">
+            <Skeleton className="h-3 w-28 bg-white/10" />
+            <Skeleton className="h-2 w-16 bg-white/10" />
+          </div>
+        </div>
+        <Skeleton className="h-4 w-3/4 bg-white/10" />
+        <Skeleton className="h-4 w-1/2 bg-white/10" />
+        <div className="flex gap-2">
+          <Skeleton className="h-5 w-14 bg-white/10" />
+          <Skeleton className="h-5 w-14 bg-white/10" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FeedEmpty({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="h-[100dvh] flex flex-col items-center justify-center px-8 text-center bg-black text-white">
+      <Inbox className="size-12 text-white/40 mb-4" />
+      <h2 className="font-display text-2xl uppercase italic tracking-tight">Feed empty</h2>
+      <p className="mt-2 text-sm text-white/60 max-w-xs">
+        No posts yet. Be the first to upload technique.
+      </p>
+      <button
+        onClick={onRetry}
+        className="mt-6 inline-flex items-center gap-2 rounded-full bg-accent text-accent-foreground px-4 py-2 text-xs font-bold uppercase tracking-wide active:scale-95 transition-transform"
+      >
+        <RefreshCw className="size-4" /> Reload
+      </button>
+    </div>
+  );
+}
+
+function FeedErrorBanner({
+  error,
+  onRetry,
+  isRetrying,
+}: {
+  error: Error;
+  onRetry: () => void;
+  isRetrying: boolean;
+}) {
+  const [incidentId, setIncidentId] = useState<string | null>(null);
+  useEffect(() => {
+    const id = reportLovableError(error, { boundary: "feed_banner" }, { handled: true });
+    setIncidentId(id);
+  }, [error]);
+  return (
+    <div
+      role="alert"
+      className="absolute top-[max(0.75rem,env(safe-area-inset-top))] left-3 right-3 z-30 rounded-xl bg-destructive/90 backdrop-blur-md text-destructive-foreground p-3 flex items-start gap-3 shadow-lg"
+    >
+      <AlertTriangle className="size-4 mt-0.5 shrink-0" />
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold">Couldn't refresh the feed</p>
+        <p className="text-[11px] opacity-90 mt-0.5">
+          Showing cached content. {incidentId && <span className="font-mono">ID {incidentId}</span>}
+        </p>
+      </div>
+      <button
+        onClick={onRetry}
+        disabled={isRetrying}
+        className="text-[10px] font-bold uppercase tracking-wide bg-white/15 hover:bg-white/25 px-2.5 py-1 rounded-full disabled:opacity-60 flex items-center gap-1"
+      >
+        <RefreshCw className={`size-3 ${isRetrying ? "animate-spin" : ""}`} />
+        Retry
+      </button>
+    </div>
   );
 }
 
