@@ -8,6 +8,7 @@ import { MobileShell } from "@/components/MobileShell";
 import { ARTS, ME, type Art } from "@/lib/mock-data";
 import { actions, computeStreak, lastTrainingDate, localDayKey, useStore, type ScheduleSlot } from "@/lib/store";
 import type { TrainingSession } from "@/lib/mock-data";
+import { processImage, ImageValidationError } from "@/lib/image";
 import { useUser } from "@/lib/auth";
 
 export const Route = createFileRoute("/_authenticated/tracker")({
@@ -558,15 +559,27 @@ function AddSessionSheet({ onClose, initialDate }: { onClose: () => void; initia
   const [activity, setActivity] = useState("");
   const [stravaUrl, setStravaUrl] = useState("");
   const [photoUrl, setPhotoUrl] = useState<string | undefined>(undefined);
+  const [photoThumb, setPhotoThumb] = useState<string | undefined>(undefined);
+  const [photoMeta, setPhotoMeta] = useState<{ w: number; h: number; kb: number } | null>(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
   const photoRef = useRef<HTMLInputElement>(null);
 
-  const onPickPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onPickPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file after an error
     if (!f) return;
-    if (f.size > 3 * 1024 * 1024) { toast.error("Image too large (max 3MB)"); return; }
-    const reader = new FileReader();
-    reader.onload = () => setPhotoUrl(reader.result as string);
-    reader.readAsDataURL(f);
+    setPhotoBusy(true);
+    try {
+      const out = await processImage(f);
+      setPhotoUrl(out.full);
+      setPhotoThumb(out.thumb);
+      setPhotoMeta({ w: out.width, h: out.height, kb: Math.round(out.bytes / 1024) });
+    } catch (err) {
+      const msg = err instanceof ImageValidationError ? err.message : "Could not process image";
+      toast.error(msg);
+    } finally {
+      setPhotoBusy(false);
+    }
   };
 
   const save = () => {
@@ -585,6 +598,7 @@ function AddSessionSheet({ onClose, initialDate }: { onClose: () => void; initia
       activity: activity.trim() || undefined,
       stravaUrl: url || undefined,
       photoUrl,
+      photoThumb,
     });
     onClose();
   };
