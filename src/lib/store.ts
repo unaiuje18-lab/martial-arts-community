@@ -72,17 +72,25 @@ let state: State = load();
 const listeners = new Set<() => void>();
 
 // On boot, hydrate user posts/duels from backend so publications survive reloads.
+// Errors are swallowed here; routes can opt into a Query-driven hydration with
+// visible loading/error states via `fetchBackendFeed` below.
 if (typeof window !== "undefined") {
-  void hydrateFromBackend();
+  void hydrateFromBackend().catch(() => {});
 }
 
-async function hydrateFromBackend() {
-  try {
-    const [{ data: posts }, { data: duels }] = await Promise.all([
-      db.from("posts").select("*").order("created_at", { ascending: false }).limit(100),
-      db.from("duels").select("*").order("created_at", { ascending: false }).limit(100),
-    ]);
-    const remotePosts: FeedPost[] = (posts ?? []).map((r: Record<string, unknown>) => ({
+export interface BackendFeed {
+  posts: FeedPost[];
+  duels: Duel[];
+}
+
+export async function fetchBackendFeed(): Promise<BackendFeed> {
+  const [postsRes, duelsRes] = await Promise.all([
+    db.from("posts").select("*").order("created_at", { ascending: false }).limit(100),
+    db.from("duels").select("*").order("created_at", { ascending: false }).limit(100),
+  ]);
+  if (postsRes.error) throw new Error(postsRes.error.message);
+  if (duelsRes.error) throw new Error(duelsRes.error.message);
+  const posts: FeedPost[] = (postsRes.data ?? []).map((r: Record<string, unknown>) => ({
       id: String(r.id),
       handle: String(r.handle),
       meta: "You",
@@ -94,34 +102,40 @@ async function hydrateFromBackend() {
       comments: Number(r.comments ?? 0),
       art: r.art as Art,
       level: r.level as FeedPost["level"],
-    }));
-    const remoteDuels: Duel[] = (duels ?? []).map((r: Record<string, unknown>) => ({
+  }));
+  const duels: Duel[] = (duelsRes.data ?? []).map((r: Record<string, unknown>) => ({
       id: String(r.id),
       title: String(r.title),
       technique: String(r.technique),
       a: { handle: String(r.a_handle), poster: String(r.a_poster), votes: Number(r.a_votes ?? 0) },
       b: { handle: String(r.b_handle), poster: String(r.b_poster), votes: Number(r.b_votes ?? 0) },
-    }));
-    set((s) => ({
+  }));
+  return { posts, duels };
+}
+
+export function applyBackendFeed({ posts, duels }: BackendFeed) {
+  set((s) => ({
       ...s,
-      userPosts: remotePosts,
-      userDuels: remoteDuels,
+    userPosts: posts,
+    userDuels: duels,
       likeCounts: {
         ...s.likeCounts,
-        ...Object.fromEntries(remotePosts.map((p) => [p.id, p.likes])),
+      ...Object.fromEntries(posts.map((p) => [p.id, p.likes])),
       },
       commentCounts: {
         ...s.commentCounts,
-        ...Object.fromEntries(remotePosts.map((p) => [p.id, p.comments])),
+      ...Object.fromEntries(posts.map((p) => [p.id, p.comments])),
       },
       voteCounts: {
         ...s.voteCounts,
-        ...Object.fromEntries(remoteDuels.map((d) => [d.id, { a: d.a.votes, b: d.b.votes }])),
+      ...Object.fromEntries(duels.map((d) => [d.id, { a: d.a.votes, b: d.b.votes }])),
       },
-    }));
-  } catch {
-    /* offline / network — keep local state */
-  }
+  }));
+}
+
+async function hydrateFromBackend() {
+  const data = await fetchBackendFeed();
+  applyBackendFeed(data);
 }
 
 function load(): State {
