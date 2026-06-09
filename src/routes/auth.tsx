@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable";
 import { MobileShell } from "@/components/MobileShell";
 import { reportLovableError } from "@/lib/lovable-error-reporting";
+import { auth as localAuth } from "@/lib/auth";
 
 const schema = z.object({
   email: z.string().trim().email("Enter a valid email").max(255),
@@ -63,6 +64,8 @@ function AuthPage() {
         });
         if (error) throw error;
         toast.success("Account ready — welcome to STRIVE");
+        navigate({ to: "/onboarding", replace: true });
+        return;
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email: parsed.data.email,
@@ -70,7 +73,13 @@ function AuthPage() {
         });
         if (error) throw error;
       }
-      navigate({ to: redirect || "/", replace: true });
+      // After sign-in, send brand-new users (no local profile yet) to onboarding.
+      const profile = localAuth.get();
+      if (!profile?.name) {
+        navigate({ to: "/onboarding", replace: true });
+      } else {
+        navigate({ to: redirect || "/", replace: true });
+      }
     } catch (err) {
       const id = reportLovableError(err, { source: "auth_email" }, { handled: true });
       toast.error(`${(err as Error).message} · ${id}`);

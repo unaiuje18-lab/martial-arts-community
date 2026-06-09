@@ -1,10 +1,11 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useState, useRef } from "react";
+import { createFileRoute, Navigate } from "@tanstack/react-router";
+import { useState, useRef, useEffect } from "react";
 import { Lock, Flame, Award, Pencil, X, Check, Camera, Plus, Trash2, Download, LogOut } from "lucide-react";
 import { MobileShell } from "@/components/MobileShell";
-import { ME, BADGES, SESSIONS, formatCount, ARTS, LEVELS, CONTENT_PREFS, BELT_SYSTEMS, hasBelts, type Art } from "@/lib/mock-data";
+import { BADGES, formatCount, ARTS, LEVELS, CONTENT_PREFS, BELT_SYSTEMS, hasBelts, type Art } from "@/lib/mock-data";
 import { auth, useUser } from "@/lib/auth";
 import { useSupabaseUser } from "@/hooks/use-supabase-user";
+import { useStore, computeStreak } from "@/lib/store";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
@@ -34,15 +35,40 @@ function ProfilePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const sessions = useStore((s) => s.sessions);
+  const userPosts = useStore((s) => s.userPosts);
 
-  const name = user?.name ?? profile?.display_name ?? authUser?.email?.split("@")[0] ?? ME.name;
-  const username = user?.username ?? profile?.handle ?? ME.username;
-  const bio = user?.bio ?? profile?.bio ?? ME.bio;
-  const avatar = user?.avatar ?? profile?.avatar_url ?? ME.avatar;
-  const arts = (user?.arts as Art[]) ?? ME.arts;
+  const name = user?.name ?? profile?.display_name ?? "";
+  const username = user?.username ?? profile?.handle ?? authUser?.email?.split("@")[0] ?? "";
+  const bio = user?.bio ?? profile?.bio ?? "";
+  const avatar = user?.avatar ?? profile?.avatar_url ?? undefined;
+  const arts = (user?.arts as Art[]) ?? [];
   const ranks = user?.ranks ?? {};
 
-  const xpPct = Math.round((ME.xp / ME.xpToNext) * 100);
+  // Derived, earned stats — start at 0 and grow with real activity.
+  const sessionsCount = sessions.length;
+  const streak = computeStreak(sessions);
+  const xp = sessionsCount * 50 + userPosts.length * 25;
+  const level = Math.floor(xp / 500) + 1;
+  const xpToNext = level * 500;
+  const xpPct = Math.min(100, Math.round((xp / xpToNext) * 100));
+  const followers = 0;
+  const following = 0;
+
+  // Earned badges derive from real activity.
+  const earnedBadges: Record<string, boolean> = {
+    b1: userPosts.length >= 1,
+    b2: streak >= 10,
+    b3: false,
+    b4: sessionsCount >= 30,
+    b5: false,
+    b6: false,
+  };
+
+  // Brand-new user with no profile yet → finish onboarding first.
+  if (authUser && !name) {
+    return <Navigate to="/onboarding" replace />;
+  }
 
   async function handleSignOut() {
     await queryClient.cancelQueries();
@@ -87,27 +113,37 @@ function ProfilePage() {
 
         {/* Identity */}
         <section className="flex items-start gap-4">
-          <img
-            src={avatar}
-            alt={name}
-            width={80}
-            height={80}
-            className="size-20 rounded-2xl object-cover border-4 border-white/5"
-          />
+          {avatar ? (
+            <img
+              src={avatar}
+              alt={name}
+              width={80}
+              height={80}
+              className="size-20 rounded-2xl object-cover border-4 border-white/5"
+            />
+          ) : (
+            <div className="size-20 rounded-2xl border-4 border-white/5 bg-secondary flex items-center justify-center font-display text-3xl uppercase text-muted-foreground">
+              {(name || username || "?").slice(0, 1)}
+            </div>
+          )}
           <div className="flex-1 pt-1 space-y-1">
             <h2 className="font-display text-2xl uppercase tracking-tight leading-none">{name}</h2>
             <p className="text-xs font-mono text-muted-foreground">@{username}</p>
             <div className="flex items-center gap-2 mt-2">
-              <span className="text-accent font-mono text-xs font-bold">LVL {ME.level}</span>
+              <span className="text-accent font-mono text-xs font-bold">LVL {level}</span>
               <div className="w-28 h-1.5 bg-white/10 rounded-full overflow-hidden">
                 <div className="h-full bg-accent" style={{ width: `${xpPct}%` }} />
               </div>
-              <span className="text-[10px] font-mono text-muted-foreground">{ME.xp}/{ME.xpToNext}</span>
+              <span className="text-[10px] font-mono text-muted-foreground">{xp}/{xpToNext}</span>
             </div>
           </div>
         </section>
 
-        <p className="text-sm text-foreground/80 text-pretty">{bio}</p>
+        {bio ? (
+          <p className="text-sm text-foreground/80 text-pretty">{bio}</p>
+        ) : (
+          <p className="text-sm text-muted-foreground italic">Add a bio from Edit profile.</p>
+        )}
 
         <div className="space-y-2">
           <div className="flex gap-2 flex-wrap">
@@ -182,15 +218,15 @@ function ProfilePage() {
 
         {/* Follow stats */}
         <div className="flex items-center gap-6 text-sm">
-          <div><span className="font-bold">{formatCount(ME.followers)}</span> <span className="text-muted-foreground">followers</span></div>
-          <div><span className="font-bold">{formatCount(ME.following)}</span> <span className="text-muted-foreground">following</span></div>
+          <div><span className="font-bold">{formatCount(followers)}</span> <span className="text-muted-foreground">followers</span></div>
+          <div><span className="font-bold">{formatCount(following)}</span> <span className="text-muted-foreground">following</span></div>
         </div>
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3">
-          <Stat label="Streak" value={`${ME.streak}D`} accent />
-          <Stat label="Sessions" value={String(SESSIONS.length + 121)} />
-          <Stat label="XP" value={formatCount(ME.xp)} />
+          <Stat label="Streak" value={`${streak}D`} accent />
+          <Stat label="Sessions" value={String(sessionsCount)} />
+          <Stat label="XP" value={formatCount(xp)} />
         </div>
 
         {/* Private tracker entry */}
@@ -219,25 +255,28 @@ function ProfilePage() {
           <div className="flex items-center justify-between">
             <h3 className="font-display text-xl uppercase italic tracking-tight">Badges</h3>
             <span className="text-[10px] font-mono text-muted-foreground">
-              {BADGES.filter((b) => b.earned).length}/{BADGES.length}
+              {BADGES.filter((b) => earnedBadges[b.id]).length}/{BADGES.length}
             </span>
           </div>
           <div className="grid grid-cols-3 gap-3">
-            {BADGES.map((b) => (
+            {BADGES.map((b) => {
+              const earned = earnedBadges[b.id];
+              return (
               <div
                 key={b.id}
                 className={`aspect-square rounded-xl border flex flex-col items-center justify-center p-2 gap-1.5 text-center ${
-                  b.earned
+                  earned
                     ? "bg-accent/10 border-accent/30"
                     : "bg-secondary/40 border-border opacity-50"
                 }`}
               >
-                <Award className={`size-6 ${b.earned ? "text-accent" : "text-muted-foreground"}`} />
-                <p className={`text-[9px] font-mono uppercase leading-tight ${b.earned ? "text-foreground" : "text-muted-foreground"}`}>
+                <Award className={`size-6 ${earned ? "text-accent" : "text-muted-foreground"}`} />
+                <p className={`text-[9px] font-mono uppercase leading-tight ${earned ? "text-foreground" : "text-muted-foreground"}`}>
                   {b.label}
                 </p>
               </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       </div>
@@ -258,10 +297,10 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
 
 function EditProfileForm({ onClose }: { onClose: () => void }) {
   const user = useUser();
-  const [name, setName] = useState(user?.name ?? ME.name);
-  const [username, setUsername] = useState(user?.username ?? ME.username);
-  const [bio, setBio] = useState(user?.bio ?? ME.bio);
-  const [arts, setArts] = useState<Art[]>(((user?.arts as Art[]) ?? ME.arts));
+  const [name, setName] = useState(user?.name ?? "");
+  const [username, setUsername] = useState(user?.username ?? "");
+  const [bio, setBio] = useState(user?.bio ?? "");
+  const [arts, setArts] = useState<Art[]>((user?.arts as Art[]) ?? []);
   const [age, setAge] = useState(user?.age ?? "");
   const [level, setLevel] = useState<string>(user?.level ?? "Intermediate");
   const [prefs, setPrefs] = useState<string[]>(user?.prefs ?? []);
