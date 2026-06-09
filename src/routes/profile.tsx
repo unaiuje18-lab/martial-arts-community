@@ -108,20 +108,37 @@ function ProfilePage() {
             })}
           </div>
           {arts.some((a) => (ranks[a]?.history?.length ?? 0) > 0) && (
-            <div className="rounded-xl border border-border bg-card/50 p-3 space-y-2">
-              <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest">
-                Belt timeline
-              </p>
+            <div className="rounded-xl border border-border bg-card/50 p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest">
+                  Belt timeline
+                </p>
+                <button
+                  type="button"
+                  onClick={() => exportBeltTimelinePdf(name, arts, ranks)}
+                  className="flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider text-accent hover:underline"
+                >
+                  <Download className="size-3" /> PDF
+                </button>
+              </div>
               {arts.map((a) => {
                 const hist = ranks[a]?.history ?? [];
                 if (!hist.length) return null;
+                const sorted = [...hist].sort((x, y) => x.date.localeCompare(y.date));
+                const first = sorted[0];
+                const last = sorted[sorted.length - 1];
                 return (
-                  <div key={a} className="text-xs">
-                    <p className="font-bold uppercase tracking-wide text-[10px] text-muted-foreground mb-1">
+                  <div key={a} className="text-xs space-y-2">
+                    <p className="font-bold uppercase tracking-wide text-[10px] text-muted-foreground">
                       {a}
                     </p>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <SummaryCell label="Current" value={last.belt} sub={formatYearMonth(last.date)} accent />
+                      <SummaryCell label="First" value={first.belt} sub={formatYearMonth(first.date)} />
+                      <SummaryCell label="Promotions" value={String(Math.max(0, sorted.length - 1))} sub={`${sorted.length} entries`} />
+                    </div>
                     <ol className="relative border-l border-border ml-1.5 pl-3 space-y-1">
-                      {hist.map((h, i) => (
+                      {sorted.map((h, i) => (
                         <li key={i} className="flex items-baseline justify-between gap-2">
                           <span className="font-bold">{h.belt}</span>
                           <span className="font-mono text-[10px] text-muted-foreground">
