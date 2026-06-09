@@ -1,9 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useRef } from "react";
-import { Lock, Flame, Award, Pencil, X, Check, Camera, Plus, Trash2, Download } from "lucide-react";
+import { Lock, Flame, Award, Pencil, X, Check, Camera, Plus, Trash2, Download, LogOut } from "lucide-react";
 import { MobileShell } from "@/components/MobileShell";
 import { ME, BADGES, SESSIONS, formatCount, ARTS, LEVELS, CONTENT_PREFS, BELT_SYSTEMS, hasBelts, type Art } from "@/lib/mock-data";
 import { auth, useUser } from "@/lib/auth";
+import { useSupabaseUser } from "@/hooks/use-supabase-user";
+import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   Sheet,
   SheetContent,
@@ -25,23 +30,43 @@ export const Route = createFileRoute("/_authenticated/profile")({
 
 function ProfilePage() {
   const user = useUser();
+  const { user: authUser, profile } = useSupabaseUser();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
 
-  const name = user?.name ?? ME.name;
-  const username = user?.username ?? ME.username;
-  const bio = user?.bio ?? ME.bio;
-  const avatar = user?.avatar ?? ME.avatar;
+  const name = user?.name ?? profile?.display_name ?? authUser?.email?.split("@")[0] ?? ME.name;
+  const username = user?.username ?? profile?.handle ?? ME.username;
+  const bio = user?.bio ?? profile?.bio ?? ME.bio;
+  const avatar = user?.avatar ?? profile?.avatar_url ?? ME.avatar;
   const arts = (user?.arts as Art[]) ?? ME.arts;
   const ranks = user?.ranks ?? {};
 
   const xpPct = Math.round((ME.xp / ME.xpToNext) * 100);
+
+  async function handleSignOut() {
+    await queryClient.cancelQueries();
+    queryClient.clear();
+    await supabase.auth.signOut();
+    auth.signOut();
+    toast.success("Signed out");
+    navigate({ to: "/auth", replace: true });
+  }
 
   return (
     <MobileShell>
       <div className="space-y-7 animate-snap-in">
         <header className="flex items-start justify-between">
           <h1 className="font-display text-4xl uppercase tracking-tight italic">Profile</h1>
-          <Sheet open={open} onOpenChange={setOpen}>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSignOut}
+              aria-label="Sign out"
+              className="size-9 rounded-full bg-secondary border border-border flex items-center justify-center text-muted-foreground hover:text-foreground"
+            >
+              <LogOut className="size-4" />
+            </button>
+            <Sheet open={open} onOpenChange={setOpen}>
             <button
               onClick={() => setOpen(true)}
               aria-label="Edit profile"
@@ -56,7 +81,8 @@ function ProfilePage() {
               </SheetHeader>
               <EditProfileForm onClose={() => setOpen(false)} />
             </SheetContent>
-          </Sheet>
+            </Sheet>
+          </div>
         </header>
 
         {/* Identity */}
