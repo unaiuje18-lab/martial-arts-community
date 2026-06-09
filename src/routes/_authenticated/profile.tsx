@@ -297,10 +297,10 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
 
 function EditProfileForm({ onClose }: { onClose: () => void }) {
   const user = useUser();
-  const [name, setName] = useState(user?.name ?? ME.name);
-  const [username, setUsername] = useState(user?.username ?? ME.username);
-  const [bio, setBio] = useState(user?.bio ?? ME.bio);
-  const [arts, setArts] = useState<Art[]>(((user?.arts as Art[]) ?? ME.arts));
+  const [name, setName] = useState(user?.name ?? "");
+  const [username, setUsername] = useState(user?.username ?? "");
+  const [bio, setBio] = useState(user?.bio ?? "");
+  const [arts, setArts] = useState<Art[]>((user?.arts as Art[]) ?? []);
   const [age, setAge] = useState(user?.age ?? "");
   const [level, setLevel] = useState<string>(user?.level ?? "Intermediate");
   const [prefs, setPrefs] = useState<string[]>(user?.prefs ?? []);
