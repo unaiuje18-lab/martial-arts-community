@@ -9,6 +9,7 @@ export interface LocalUser {
   name: string;
   username: string;
   age?: string;
+  birthday?: string; // YYYY-MM-DD
   arts?: string[];
   level?: string;
   prefs?: string[];

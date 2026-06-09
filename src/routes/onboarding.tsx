@@ -22,7 +22,7 @@ function Onboarding() {
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
-  const [age, setAge] = useState("");
+  const [birthday, setBirthday] = useState("");
   const [arts, setArts] = useState<Art[]>([]);
   const [level, setLevel] = useState<(typeof LEVELS)[number] | null>(null);
   const [prefs, setPrefs] = useState<string[]>([]);
@@ -32,10 +32,12 @@ function Onboarding() {
   const next = async () => {
     if (step < steps.length - 1) setStep((s) => s + 1);
     else {
+      const age = birthday ? String(computeAge(birthday)) : "";
       auth.signIn({
         name,
         username,
         age,
+        birthday,
         arts,
         level: level ?? undefined,
         prefs,
@@ -59,7 +61,7 @@ function Onboarding() {
   };
 
   const canContinue =
-    (step === 0 && name && username && age) ||
+    (step === 0 && name && username && birthday && computeAge(birthday) >= 5) ||
     (step === 1 && arts.length > 0) ||
     (step === 2 && level) ||
     (step === 3 && prefs.length > 0);
@@ -100,14 +102,19 @@ function Onboarding() {
                 className="onboarding-input"
               />
             </Field>
-            <Field label="Age">
+            <Field label="Birthday">
               <input
-                value={age}
-                onChange={(e) => setAge(e.target.value.replace(/\D/g, ""))}
-                inputMode="numeric"
-                placeholder="28"
+                type="date"
+                value={birthday}
+                max={new Date().toISOString().slice(0, 10)}
+                onChange={(e) => setBirthday(e.target.value)}
                 className="onboarding-input"
               />
+              {birthday && (
+                <span className="text-[10px] font-mono text-muted-foreground mt-1 block">
+                  {computeAge(birthday)} years old
+                </span>
+              )}
             </Field>
           </div>
         )}
@@ -224,4 +231,14 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       {children}
     </label>
   );
+}
+
+function computeAge(birthday: string): number {
+  const b = new Date(birthday);
+  if (Number.isNaN(b.getTime())) return 0;
+  const now = new Date();
+  let age = now.getFullYear() - b.getFullYear();
+  const m = now.getMonth() - b.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < b.getDate())) age--;
+  return Math.max(0, age);
 }
