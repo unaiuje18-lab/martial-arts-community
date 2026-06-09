@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/sheet";
 import { jsPDF } from "jspdf";
 
-export const Route = createFileRoute("/profile")({
+export const Route = createFileRoute("/_authenticated/profile")({
   head: () => ({
     meta: [
       { title: "STRIVE — Profile" },
