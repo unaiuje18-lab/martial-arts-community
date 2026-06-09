@@ -205,6 +205,12 @@ function TrackerPage() {
 
         <StreakCard sessions={sessions} streak={streak} />
 
+        <WeeklySchedule
+          schedule={schedule}
+          onAdd={() => setAddingSlot(true)}
+          onEdit={(slot) => setEditingSlot(slot)}
+        />
+
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="font-display text-xl uppercase italic tracking-tight">Calendar</h2>
@@ -420,6 +426,12 @@ function TrackerPage() {
         <AddSessionSheet
           initialDate={prefillDate ?? new Date().toISOString().slice(0, 10)}
           onClose={() => { setAdding(false); setPrefillDate(null); }}
+        />
+      )}
+      {(addingSlot || editingSlot) && (
+        <ScheduleSlotSheet
+          initial={editingSlot}
+          onClose={() => { setAddingSlot(false); setEditingSlot(null); }}
         />
       )}
     </MobileShell>
