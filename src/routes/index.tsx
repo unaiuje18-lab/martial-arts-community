@@ -163,12 +163,6 @@ function FeedPage() {
   );
 }
 
-function FeedSkeleton() {
-  return null as never; /* replaced below */
-}
-
-function _Reserved() { return null; }
-
 function ConnectionBanner({ online, justReconnected }: { online: boolean; justReconnected: boolean }) {
   if (online && !justReconnected) return null;
   const isOffline = !online;
@@ -188,7 +182,7 @@ function ConnectionBanner({ online, justReconnected }: { online: boolean; justRe
   );
 }
 
-function FeedSkeletonReal() {
+function FeedSkeleton() {
   return (
     <div className="h-[100dvh] w-full bg-black relative overflow-hidden">
       <Skeleton className="absolute inset-0 rounded-none bg-white/5" />
