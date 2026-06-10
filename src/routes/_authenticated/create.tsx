@@ -118,6 +118,25 @@ function UploadProgressBar({ progress, label }: { progress: number; label: strin
   );
 }
 
+function stageLabel(stage: string): string {
+  switch (stage) {
+    case "validate":
+      return "Validating video";
+    case "probe":
+      return "Reading video";
+    case "compress":
+      return "Compressing (real-time)";
+    case "uploading":
+      return "Uploading video";
+    case "finalising":
+      return "Finalising";
+    case "done":
+      return "Done";
+    default:
+      return "Preparing";
+  }
+}
+
 const ACTION_LIST: { key: ActionKey; icon: typeof Upload; title: string; desc: string }[] = [
   { key: "video", icon: Upload, title: "Upload Video", desc: "Share a technique or training clip" },
   { key: "duel", icon: Swords, title: "Start a Duel", desc: "Pit two executions against each other" },
