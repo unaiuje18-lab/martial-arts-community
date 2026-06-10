@@ -291,6 +291,12 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
   const [videoUpload, setVideoUpload] = useState<UploadResult | null>(null);
   const [videoProgress, setVideoProgress] = useState(0);
   const [videoUploading, setVideoUploading] = useState(false);
+  const [videoStage, setVideoStage] = useState<
+    "idle" | "validate" | "probe" | "compress" | "uploading" | "finalising" | "done"
+  >("idle");
+  const [videoError, setVideoError] = useState<string | null>(null);
+  const [videoMeta, setVideoMeta] = useState<VideoMeta | null>(null);
+  const [videoCompressed, setVideoCompressed] = useState(false);
 
   // Poster scrubber & crop
   const [duration, setDuration] = useState(0);
@@ -314,50 +320,72 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
     if (videoLocalUrl) URL.revokeObjectURL(videoLocalUrl);
   }, [videoLocalUrl]);
 
-  const startVideoUpload = async (f: File) => {
-    setVideoUploading(true);
-    setVideoProgress(0);
-    try {
-      const result = await uploadMedia(f, {
-        folder: "videos",
-        filename: f.name.replace(/\.[^.]+$/, ""),
-        contentType: f.type,
-        onProgress: (p) => setVideoProgress(p),
-      });
-      setVideoUpload(result);
-      toast.success("Video uploaded");
-    } catch (e) {
-      toast.error((e as Error).message || "Could not upload video");
-      setVideoFile(null);
-      setVideoUpload(null);
-      if (videoLocalUrl) URL.revokeObjectURL(videoLocalUrl);
-      setVideoLocalUrl("");
-    } finally {
-      setVideoUploading(false);
-    }
-  };
-
-  const handleVideoFile = (f: File | null | undefined) => {
+  const handleVideoFile = async (f: File | null | undefined) => {
     if (!f) return;
-    if (!f.type.startsWith("video/")) {
-      toast.error("That file is not a video");
-      return;
-    }
-    const mb = f.size / (1024 * 1024);
-    if (mb > MAX_VIDEO_MB) {
-      toast.error(`Video too large (${mb.toFixed(1)}MB). Max ${MAX_VIDEO_MB}MB.`);
-      return;
-    }
-    if (videoLocalUrl) URL.revokeObjectURL(videoLocalUrl);
-    const local = URL.createObjectURL(f);
-    setVideoFile(f);
-    setVideoLocalUrl(local);
+    setVideoError(null);
     setVideoUpload(null);
     setPosterUpload(null);
     setPosterPreview("");
     setDuration(0);
     setPosterSecond(0.5);
-    void startVideoUpload(f);
+    setVideoCompressed(false);
+    setVideoMeta(null);
+    setVideoUploading(true);
+    setVideoProgress(0);
+
+    let localUrl = "";
+    try {
+      // 1. Validate + (optionally) compress.
+      setVideoStage("validate");
+      const processed = await processVideo(f, {
+        onStage: (s) => setVideoStage(s),
+      });
+      setVideoMeta(processed.meta);
+      setVideoCompressed(processed.compressed);
+
+      const blob = processed.file;
+      localUrl = URL.createObjectURL(blob);
+      if (videoLocalUrl) URL.revokeObjectURL(videoLocalUrl);
+      // Keep a File-shaped object so the preview/UI keeps the original name.
+      setVideoFile(
+        new File([blob], f.name.replace(/\.[^.]+$/, "") + (processed.compressed ? ".webm" : ""), {
+          type: processed.contentType,
+        }),
+      );
+      setVideoLocalUrl(localUrl);
+
+      // 2. Upload to storage.
+      setVideoStage("uploading");
+      const result = await uploadMedia(blob, {
+        folder: "videos",
+        filename: f.name.replace(/\.[^.]+$/, ""),
+        contentType: processed.contentType,
+        onProgress: (p) => setVideoProgress(p),
+      });
+      setVideoStage("finalising");
+      setVideoUpload(result);
+      setVideoStage("done");
+      toast.success(
+        processed.compressed
+          ? `Video uploaded (compressed ${(processed.originalBytes / 1024 / 1024).toFixed(1)} → ${(processed.bytes / 1024 / 1024).toFixed(1)} MB)`
+          : "Video uploaded",
+      );
+    } catch (e) {
+      const err = e as Error;
+      const msg =
+        e instanceof VideoValidationError
+          ? err.message
+          : err.message || "Could not upload video — please try again.";
+      setVideoError(msg);
+      toast.error(msg);
+      setVideoFile(null);
+      setVideoUpload(null);
+      if (localUrl) URL.revokeObjectURL(localUrl);
+      setVideoLocalUrl("");
+      setVideoStage("idle");
+    } finally {
+      setVideoUploading(false);
+    }
   };
 
   const clearVideo = () => {
@@ -370,6 +398,10 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
     setPosterUpload(null);
     setPosterProgress(0);
     setDuration(0);
+    setVideoError(null);
+    setVideoStage("idle");
+    setVideoCompressed(false);
+    setVideoMeta(null);
     if (videoFileRef.current) videoFileRef.current.value = "";
   };
 
