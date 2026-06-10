@@ -197,22 +197,7 @@ function RootComponent() {
       local?.level &&
       local?.prefs && local.prefs.length > 0
     );
-    if (localComplete) {
-      setOnboardingComplete(true);
-      return;
-    }
-    supabase
-      .from("profiles")
-      .select("display_name")
-      .eq("id", authedUserId)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (cancelled) return;
-        // Remote `display_name` alone is not enough — local onboarding state
-        // owns the full required set (arts/level/prefs/birthday).
-        const remoteName = !!(data?.display_name && data.display_name.trim().length > 0);
-        setOnboardingComplete(remoteName && localComplete);
-      });
+    setOnboardingComplete(localComplete);
     return () => {
       cancelled = true;
     };
