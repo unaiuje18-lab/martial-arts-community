@@ -317,6 +317,8 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
 
 function EditProfileForm({ onClose }: { onClose: () => void }) {
   const user = useUser();
+  const t = useT();
+  const { user: authUser } = useSupabaseUser();
   const [name, setName] = useState(user?.name ?? "");
   const [username, setUsername] = useState(user?.username ?? "");
   const [bio, setBio] = useState(user?.bio ?? "");
@@ -325,6 +327,10 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
   const [level, setLevel] = useState<string>(user?.level ?? "Intermediate");
   const [prefs, setPrefs] = useState<string[]>(user?.prefs ?? []);
   const [avatar, setAvatar] = useState<string | undefined>(user?.avatar);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [changingPw, setChangingPw] = useState(false);
   type RankEntry = {
     type: "belt" | "years";
     value: string;
@@ -336,19 +342,29 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
   );
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const onPickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
-    if (f.size > 3 * 1024 * 1024) {
-      alert("Image too large (max 3MB).");
-      return;
+    setAvatarBusy(true);
+    try {
+      // Validate + compress to ≤512px square-ish, then upload to cloud.
+      const processed = await processImage(f, { maxDim: 512, thumbDim: 256, quality: 0.85 });
+      const blob = await (await fetch(processed.full)).blob();
+      const { url } = await uploadMedia(blob, {
+        folder: "avatars",
+        filename: `avatar-${authUser?.id ?? "me"}`,
+        contentType: blob.type || "image/webp",
+      });
+      setAvatar(url);
+    } catch (err) {
+      toast.error((err as Error).message || t("profile.avatarError"));
+    } finally {
+      setAvatarBusy(false);
+      if (fileRef.current) fileRef.current.value = "";
     }
-    const reader = new FileReader();
-    reader.onload = () => setAvatar(reader.result as string);
-    reader.readAsDataURL(f);
   };
 
-  const save = () => {
+  const save = async () => {
     // Validate ranks against active belt system; drop invalid values.
     const cleanRanks: Record<string, RankEntry> = {};
     for (const [art, r] of Object.entries(ranks)) {
@@ -364,19 +380,62 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
         cleanRanks[art] = { type: "years", value: r.value };
       }
     }
-    auth.update({
-      name: name.trim(),
-      username: username.trim().replace(/\s/g, "_").toLowerCase(),
-      bio: bio.trim(),
-      arts,
-      age: age.trim(),
-      level,
-      prefs,
-      avatar,
-      ranks: cleanRanks,
-    });
-    onClose();
+    const cleanName = name.trim();
+    const cleanHandle = username.trim().replace(/\s/g, "_").toLowerCase();
+    setSaving(true);
+    try {
+      // 1. Local-first update so the UI reflects changes immediately.
+      auth.update({
+        name: cleanName,
+        username: cleanHandle,
+        bio: bio.trim(),
+        arts,
+        age: age.trim(),
+        level,
+        prefs,
+        avatar,
+        ranks: cleanRanks,
+      });
+      // 2. Persist the public-facing fields to the backend so they sync across devices.
+      if (authUser) {
+        const { error } = await supabase
+          .from("profiles")
+          .update({
+            display_name: cleanName || null,
+            handle: cleanHandle || authUser.email?.split("@")[0] || "user",
+            bio: bio.trim() || null,
+            primary_art: arts[0] ?? null,
+            avatar_url: avatar ?? null,
+          })
+          .eq("id", authUser.id);
+        if (error) throw error;
+      }
+      toast.success(t("profile.saved"));
+      onClose();
+    } catch (err) {
+      toast.error((err as Error).message || t("profile.saveError"));
+    } finally {
+      setSaving(false);
+    }
   };
+
+  async function changePassword() {
+    if (newPassword.length < 8) {
+      toast.error(t("auth.weakPassword"));
+      return;
+    }
+    setChangingPw(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      setNewPassword("");
+      toast.success(t("profile.passwordUpdated"));
+    } catch (err) {
+      toast.error(t(authErrorKey(err)));
+    } finally {
+      setChangingPw(false);
+    }
+  }
 
   const toggleArt = (a: Art) => {
     setArts((prev) => (prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a]));
