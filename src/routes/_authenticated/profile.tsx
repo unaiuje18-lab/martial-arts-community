@@ -487,7 +487,8 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
       <div className="flex items-center gap-4">
         <button
           type="button"
-          onClick={() => fileRef.current?.click()}
+          onClick={() => !avatarBusy && fileRef.current?.click()}
+          disabled={avatarBusy}
           className="relative size-20 rounded-2xl overflow-hidden border-4 border-white/5 bg-secondary group"
         >
           {avatar ? (
@@ -497,9 +498,17 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
               <Camera className="size-6" />
             </div>
           )}
-          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-            <Camera className="size-5 text-white" />
-          </div>
+          {avatarBusy ? (
+            <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+              <span className="text-[9px] font-mono uppercase text-white tracking-widest text-center px-1">
+                {t("profile.uploadingAvatar")}
+              </span>
+            </div>
+          ) : (
+            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+              <Camera className="size-5 text-white" />
+            </div>
+          )}
         </button>
         <div className="flex-1">
           <p className="text-sm font-semibold">Profile Photo</p>
