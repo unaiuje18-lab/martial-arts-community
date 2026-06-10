@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowRight, Sun, Moon } from "lucide-react";
 import { MobileShell } from "@/components/MobileShell";
 import { ARTS, LEVELS, CONTENT_PREFS, type Art } from "@/lib/mock-data";
@@ -22,6 +22,7 @@ export const Route = createFileRoute("/onboarding")({
 function Onboarding() {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
+  const [attempted, setAttempted] = useState(false);
   const t = useT();
   const { lang, setLang } = useI18n();
   const { theme, toggle: toggleTheme } = useTheme();
@@ -35,7 +36,47 @@ function Onboarding() {
   const stepKeys = ["onb.identity", "onb.disciplines", "onb.skill", "onb.interests"] as const;
   const steps = stepKeys.map((k) => t(k));
 
+  // Clear "attempted" banner whenever the user moves between steps.
+  useEffect(() => {
+    setAttempted(false);
+  }, [step]);
+
+  const ageOk = !!birthday && computeAge(birthday) >= 5;
+
+  // Per-step error list (i18n keys). Empty array = step valid.
+  const stepErrors: string[] = (() => {
+    if (step === 0) {
+      const errs: string[] = [];
+      if (!name.trim()) errs.push("onb.err.name");
+      if (!username.trim()) errs.push("onb.err.username");
+      if (!birthday) errs.push("onb.err.birthday");
+      else if (!ageOk) errs.push("onb.err.age");
+      return errs;
+    }
+    if (step === 1 && arts.length === 0) return ["onb.err.arts"];
+    if (step === 2 && !level) return ["onb.err.level"];
+    if (step === 3 && prefs.length === 0) return ["onb.err.prefs"];
+    return [];
+  })();
+
+  // Overall completion across ALL steps — drives the progress bar.
+  const totalChecks = 7;
+  const completed =
+    (name.trim() ? 1 : 0) +
+    (username.trim() ? 1 : 0) +
+    (ageOk ? 1 : 0) +
+    (arts.length > 0 ? 1 : 0) +
+    (level ? 1 : 0) +
+    (prefs.length > 0 ? 1 : 0) +
+    (birthday ? 1 : 0);
+  const percent = Math.round((completed / totalChecks) * 100);
+
   const next = async () => {
+    if (stepErrors.length > 0) {
+      setAttempted(true);
+      return;
+    }
+    setAttempted(false);
     if (step < steps.length - 1) setStep((s) => s + 1);
     else {
       const age = birthday ? String(computeAge(birthday)) : "";
@@ -66,11 +107,7 @@ function Onboarding() {
     }
   };
 
-  const canContinue =
-    (step === 0 && name && username && birthday && computeAge(birthday) >= 5) ||
-    (step === 1 && arts.length > 0) ||
-    (step === 2 && level) ||
-    (step === 3 && prefs.length > 0);
+  const canContinue = stepErrors.length === 0;
 
   return (
     <MobileShell>
@@ -113,8 +150,33 @@ function Onboarding() {
               />
             ))}
           </div>
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
+              <span>{t("onb.progress")}</span>
+              <span className="text-accent">{percent}%</span>
+            </div>
+            <div className="h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
+              <div
+                className="h-full bg-accent transition-all duration-300"
+                style={{ width: `${percent}%` }}
+              />
+            </div>
+          </div>
           <h1 className="font-display text-4xl uppercase tracking-tight italic">{steps[step]}</h1>
         </header>
+
+        {attempted && stepErrors.length > 0 && (
+          <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 space-y-1">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-destructive">
+              {t("onb.fix")}
+            </p>
+            <ul className="text-xs text-destructive space-y-0.5 list-disc list-inside">
+              {stepErrors.map((k) => (
+                <li key={k}>{t(k as never)}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {step === 0 && (
           <div className="space-y-3">
@@ -228,8 +290,10 @@ function Onboarding() {
 
         <button
           onClick={next}
-          disabled={!canContinue}
-          className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-accent text-accent-foreground font-bold uppercase tracking-wider text-sm disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] transition-transform"
+          aria-disabled={!canContinue}
+          className={`w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-accent text-accent-foreground font-bold uppercase tracking-wider text-sm active:scale-[0.98] transition-transform ${
+            !canContinue ? "opacity-60" : ""
+          }`}
         >
           {step === steps.length - 1 ? t("onb.enter") : t("onb.continue")}
           <ArrowRight className="size-4" strokeWidth={2.5} />

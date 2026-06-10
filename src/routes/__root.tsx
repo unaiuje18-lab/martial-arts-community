@@ -15,7 +15,7 @@ import { installPerformanceObservers } from "../lib/metrics";
 import { IncidentsPanel } from "@/components/IncidentsPanel";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { auth as localAuth } from "@/lib/auth";
+import { auth as localAuth, useUser } from "@/lib/auth";
 import { I18nProvider } from "@/lib/i18n";
 import { ThemeProvider } from "@/lib/theme";
 import { useRouterState } from "@tanstack/react-router";
@@ -144,6 +144,7 @@ function RootComponent() {
   const location = useRouterState({ select: (s) => s.location });
   const [authedUserId, setAuthedUserId] = useState<string | null>(null);
   const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(null);
+  const localUser = useUser();
 
   useEffect(() => {
     installGlobalErrorHandlers();
@@ -187,26 +188,17 @@ function RootComponent() {
       setOnboardingComplete(null);
       return;
     }
-    let cancelled = false;
-    const local = localAuth.get();
-    if (local?.name) {
-      setOnboardingComplete(true);
-      return;
-    }
-    supabase
-      .from("profiles")
-      .select("display_name")
-      .eq("id", authedUserId)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (cancelled) return;
-        const filled = !!(data?.display_name && data.display_name.trim().length > 0);
-        setOnboardingComplete(filled);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [authedUserId]);
+    const local = localUser ?? localAuth.get();
+    const localComplete = !!(
+      local?.name &&
+      local?.username &&
+      local?.birthday &&
+      local?.arts && local.arts.length > 0 &&
+      local?.level &&
+      local?.prefs && local.prefs.length > 0
+    );
+    setOnboardingComplete(localComplete);
+  }, [authedUserId, localUser]);
 
   useEffect(() => {
     if (!authedUserId || onboardingComplete !== false) return;
