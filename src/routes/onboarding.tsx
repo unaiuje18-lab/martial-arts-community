@@ -6,6 +6,7 @@ import { ARTS, LEVELS, CONTENT_PREFS, type Art } from "@/lib/mock-data";
 import { auth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useT } from "@/lib/i18n";
 
 export const Route = createFileRoute("/onboarding")({
   head: () => ({
@@ -20,6 +21,7 @@ export const Route = createFileRoute("/onboarding")({
 function Onboarding() {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
+  const t = useT();
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [birthday, setBirthday] = useState("");
@@ -27,7 +29,8 @@ function Onboarding() {
   const [level, setLevel] = useState<(typeof LEVELS)[number] | null>(null);
   const [prefs, setPrefs] = useState<string[]>([]);
 
-  const steps = ["Identity", "Disciplines", "Skill", "Interests"] as const;
+  const stepKeys = ["onb.identity", "onb.disciplines", "onb.skill", "onb.interests"] as const;
+  const steps = stepKeys.map((k) => t(k));
 
   const next = async () => {
     if (step < steps.length - 1) setStep((s) => s + 1);
@@ -71,7 +74,7 @@ function Onboarding() {
       <div className="space-y-7 animate-snap-in">
         <header className="space-y-3">
           <p className="text-[10px] font-mono text-accent uppercase tracking-widest">
-            Step {step + 1} / {steps.length}
+            {t("onb.step")} {step + 1} / {steps.length}
           </p>
           <div className="flex gap-1.5">
             {steps.map((_, i) => (
@@ -86,7 +89,7 @@ function Onboarding() {
 
         {step === 0 && (
           <div className="space-y-3">
-            <Field label="Name">
+            <Field label={t("onb.name")}>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -94,7 +97,7 @@ function Onboarding() {
                 className="onboarding-input"
               />
             </Field>
-            <Field label="Username">
+            <Field label={t("onb.username")}>
               <input
                 value={username}
                 onChange={(e) => setUsername(e.target.value.replace(/\s/g, "_").toLowerCase())}
@@ -102,7 +105,7 @@ function Onboarding() {
                 className="onboarding-input"
               />
             </Field>
-            <Field label="Birthday">
+            <Field label={t("onb.birthday")}>
               <input
                 type="date"
                 value={birthday}
@@ -113,7 +116,7 @@ function Onboarding() {
             </Field>
             <div className="rounded-xl border border-border bg-secondary/40 px-4 py-3 flex items-baseline justify-between">
               <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
-                Age (auto)
+                {t("onb.ageAuto")}
               </span>
               <span className="font-display text-2xl tracking-tight text-accent">
                 {birthday ? computeAge(birthday) : "—"}
@@ -199,7 +202,7 @@ function Onboarding() {
           disabled={!canContinue}
           className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-accent text-accent-foreground font-bold uppercase tracking-wider text-sm disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] transition-transform"
         >
-          {step === steps.length - 1 ? "Enter STRIVE" : "Continue"}
+          {step === steps.length - 1 ? t("onb.enter") : t("onb.continue")}
           <ArrowRight className="size-4" strokeWidth={2.5} />
         </button>
       </div>

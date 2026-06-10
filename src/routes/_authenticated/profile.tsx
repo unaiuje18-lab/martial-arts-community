@@ -5,6 +5,7 @@ import { MobileShell } from "@/components/MobileShell";
 import { BADGES, formatCount, ARTS, LEVELS, CONTENT_PREFS, BELT_SYSTEMS, hasBelts, type Art } from "@/lib/mock-data";
 import { auth, useUser } from "@/lib/auth";
 import { useSupabaseUser } from "@/hooks/use-supabase-user";
+import { useI18n, useT } from "@/lib/i18n";
 import { useStore, computeStreak } from "@/lib/store";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "@tanstack/react-router";
@@ -37,6 +38,8 @@ function ProfilePage() {
   const [open, setOpen] = useState(false);
   const sessions = useStore((s) => s.sessions);
   const userPosts = useStore((s) => s.userPosts);
+  const { lang, setLang } = useI18n();
+  const t = useT();
 
   const name = user?.name ?? profile?.display_name ?? "";
   const username = user?.username ?? profile?.handle ?? authUser?.email?.split("@")[0] ?? "";
@@ -83,11 +86,25 @@ function ProfilePage() {
     <MobileShell>
       <div className="space-y-7 animate-snap-in">
         <header className="flex items-start justify-between">
-          <h1 className="font-display text-4xl uppercase tracking-tight italic">Profile</h1>
+          <h1 className="font-display text-4xl uppercase tracking-tight italic">{t("profile.title")}</h1>
           <div className="flex items-center gap-2">
+            <div className="inline-flex rounded-full bg-secondary border border-border p-0.5 text-[10px] font-mono uppercase tracking-widest" aria-label={t("profile.language")}>
+              <button
+                onClick={() => setLang("en")}
+                className={`px-2.5 py-1 rounded-full ${lang === "en" ? "bg-accent text-accent-foreground" : "text-muted-foreground"}`}
+              >
+                EN
+              </button>
+              <button
+                onClick={() => setLang("es")}
+                className={`px-2.5 py-1 rounded-full ${lang === "es" ? "bg-accent text-accent-foreground" : "text-muted-foreground"}`}
+              >
+                ES
+              </button>
+            </div>
             <button
               onClick={handleSignOut}
-              aria-label="Sign out"
+              aria-label={t("profile.signOut")}
               className="size-9 rounded-full bg-secondary border border-border flex items-center justify-center text-muted-foreground hover:text-foreground"
             >
               <LogOut className="size-4" />
@@ -95,7 +112,7 @@ function ProfilePage() {
             <Sheet open={open} onOpenChange={setOpen}>
             <button
               onClick={() => setOpen(true)}
-              aria-label="Edit profile"
+              aria-label={t("profile.edit")}
               className="size-9 rounded-full bg-secondary border border-border flex items-center justify-center text-muted-foreground"
             >
               <Pencil className="size-4" />

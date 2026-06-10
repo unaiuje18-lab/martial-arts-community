@@ -16,6 +16,7 @@ import { IncidentsPanel } from "@/components/IncidentsPanel";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { auth as localAuth } from "@/lib/auth";
+import { I18nProvider } from "@/lib/i18n";
 
 function NotFoundComponent() {
   return (
@@ -167,16 +168,34 @@ function RootComponent() {
       } else {
         queryClient.clear();
       }
+      // Newly signed-in users (no local profile yet) → finish onboarding.
+      if (event === "SIGNED_IN" && session?.user) {
+        const path = window.location.pathname;
+        if (path === "/onboarding" || path === "/auth") return;
+        const local = localAuth.get();
+        if (local?.name) return;
+        supabase
+          .from("profiles")
+          .select("display_name, handle")
+          .eq("id", session.user.id)
+          .maybeSingle()
+          .then(({ data }) => {
+            const filled = data?.display_name && data.display_name.trim().length > 0;
+            if (!filled) router.navigate({ to: "/onboarding", replace: true });
+          });
+      }
     });
     return () => sub.subscription.unsubscribe();
   }, [router, queryClient]);
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-      <Outlet />
-      <Toaster position="top-center" />
-      <IncidentsPanel />
+      <I18nProvider>
+        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+        <Outlet />
+        <Toaster position="top-center" />
+        <IncidentsPanel />
+      </I18nProvider>
     </QueryClientProvider>
   );
 }

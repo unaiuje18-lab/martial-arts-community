@@ -51,34 +51,58 @@ export function uploadMedia(
   const path = `${opts.folder}/${randomId()}-${base}.${ext}`;
   const endpoint = `${SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`;
 
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", endpoint, true);
-    xhr.setRequestHeader("Authorization", `Bearer ${SUPABASE_KEY}`);
-    xhr.setRequestHeader("apikey", SUPABASE_KEY);
-    xhr.setRequestHeader("Content-Type", type);
-    xhr.setRequestHeader("x-upsert", "true");
-    xhr.upload.onprogress = (ev) => {
-      if (ev.lengthComputable && opts.onProgress) {
-        opts.onProgress(Math.min(0.99, ev.loaded / ev.total));
-      }
-    };
-    xhr.onerror = () => reject(new Error("Network error during upload"));
-    xhr.onload = async () => {
-      if (xhr.status < 200 || xhr.status >= 300) {
-        reject(new Error(`Upload failed (${xhr.status}): ${xhr.responseText}`));
-        return;
-      }
-      try {
-        const url = await getSignedUrl(path);
-        opts.onProgress?.(1);
-        resolve({ path, url });
-      } catch (e) {
-        reject(e as Error);
-      }
-    };
-    xhr.send(file);
-  });
+  // Use the current user's access token when available — storage RLS evaluates
+  // policies against the JWT, and some networks/CDNs reject raw-body POST
+  // uploads carrying only the anon key.
+  return (async () => {
+    const { data: sess } = await supabase.auth.getSession();
+    const token = sess.session?.access_token || SUPABASE_KEY;
+    return new Promise<UploadResult>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      // PUT + x-upsert is the documented update path and is more reliable
+      // than POST for re-uploads / retries.
+      xhr.open("PUT", endpoint, true);
+      xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      xhr.setRequestHeader("apikey", SUPABASE_KEY);
+      xhr.setRequestHeader("Content-Type", type);
+      xhr.setRequestHeader("x-upsert", "true");
+      xhr.upload.onprogress = (ev) => {
+        if (ev.lengthComputable && opts.onProgress) {
+          opts.onProgress(Math.min(0.99, ev.loaded / ev.total));
+        }
+      };
+      xhr.onerror = () => reject(new Error("Network error during upload"));
+      xhr.onload = async () => {
+        if (xhr.status < 200 || xhr.status >= 300) {
+          // Fallback to supabase-js (handles auth + multipart correctly).
+          try {
+            const { error } = await supabase.storage
+              .from(BUCKET)
+              .upload(path, file, { upsert: true, contentType: type });
+            if (error) throw error;
+            const url = await getSignedUrl(path);
+            opts.onProgress?.(1);
+            resolve({ path, url });
+          } catch (e) {
+            reject(
+              new Error(
+                `Upload failed (${xhr.status}): ${xhr.responseText || (e as Error).message}`,
+              ),
+            );
+          }
+          return;
+        }
+        try {
+          const url = await getSignedUrl(path);
+          opts.onProgress?.(1);
+          resolve({ path, url });
+        } catch (e) {
+          reject(e as Error);
+        }
+      };
+      xhr.send(file);
+    });
+  })();
 }
 
 export async function deleteMedia(path: string): Promise<void> {
