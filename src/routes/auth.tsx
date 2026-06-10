@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Loader2, Mail, Lock, ArrowRight, MailCheck } from "lucide-react";
+import { Loader2, Mail, Lock, ArrowRight, MailCheck, Sun, Moon } from "lucide-react";
 import { z } from "zod";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -8,6 +8,7 @@ import { lovable } from "@/integrations/lovable";
 import { MobileShell } from "@/components/MobileShell";
 import { reportLovableError } from "@/lib/lovable-error-reporting";
 import { useT, useI18n } from "@/lib/i18n";
+import { useTheme } from "@/lib/theme";
 import { authErrorKey } from "@/lib/auth-errors";
 
 const signinSchema = z.object({
@@ -44,6 +45,7 @@ function AuthPage() {
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
   const t = useT();
   const { lang, setLang } = useI18n();
+  const { theme, toggle: toggleTheme } = useTheme();
 
   // If a session already exists, bounce to redirect target.
   useEffect(() => {
@@ -107,14 +109,13 @@ function AuthPage() {
           options: { emailRedirectTo: `${window.location.origin}/` },
         });
         if (err) throw err;
-        // Email confirmation is required → no session yet. Show "check email" state
-        // instead of navigating; __root will route to /onboarding once they verify.
+        // Email confirmation is disabled → session is created immediately.
+        // If for any reason there's no session, fall back to "check your email".
         if (!data.session) {
           setPendingEmail(parsed.data.email);
           setSubmitting(false);
           return;
         }
-        // Auto-confirmed (dev/old configs): go straight to onboarding.
         navigate({ to: "/onboarding", replace: true });
         return;
       } else {
@@ -209,7 +210,15 @@ function AuthPage() {
   return (
     <MobileShell>
       <div className="space-y-7 animate-snap-in pt-4">
-        <div className="flex justify-end">
+        <div className="flex justify-end items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label="Theme"
+            className="size-8 rounded-full bg-secondary border border-border flex items-center justify-center text-muted-foreground"
+          >
+            {theme === "dark" ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />}
+          </button>
           <div className="inline-flex rounded-full bg-secondary border border-border p-0.5 text-[10px] font-mono uppercase tracking-widest">
             <button
               onClick={() => setLang("en")}

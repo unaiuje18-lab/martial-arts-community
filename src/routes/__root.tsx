@@ -17,6 +17,8 @@ import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { auth as localAuth } from "@/lib/auth";
 import { I18nProvider } from "@/lib/i18n";
+import { ThemeProvider } from "@/lib/theme";
+import { useRouterState } from "@tanstack/react-router";
 
 function NotFoundComponent() {
   return (
@@ -139,6 +141,9 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const router = useRouter();
+  const location = useRouterState({ select: (s) => s.location });
+  const [authedUserId, setAuthedUserId] = useState<string | null>(null);
+  const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(null);
 
   useEffect(() => {
     installGlobalErrorHandlers();
@@ -152,6 +157,7 @@ function RootComponent() {
     // Prime active user id from existing session.
     supabase.auth.getUser().then(({ data }) => {
       localAuth.setActiveUserId(data.user?.id ?? null);
+      setAuthedUserId(data.user?.id ?? null);
     });
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (
@@ -162,40 +168,65 @@ function RootComponent() {
         return;
       }
       localAuth.setActiveUserId(session?.user?.id ?? null);
+      setAuthedUserId(session?.user?.id ?? null);
+      if (event === "SIGNED_OUT") setOnboardingComplete(null);
       router.invalidate();
       if (event !== "SIGNED_OUT") {
         queryClient.invalidateQueries();
       } else {
         queryClient.clear();
       }
-      // Newly signed-in users (no local profile yet) → finish onboarding.
-      if (event === "SIGNED_IN" && session?.user) {
-        const path = window.location.pathname;
-        if (path === "/onboarding" || path === "/auth") return;
-        const local = localAuth.get();
-        if (local?.name) return;
-        supabase
-          .from("profiles")
-          .select("display_name, handle")
-          .eq("id", session.user.id)
-          .maybeSingle()
-          .then(({ data }) => {
-            const filled = data?.display_name && data.display_name.trim().length > 0;
-            if (!filled) router.navigate({ to: "/onboarding", replace: true });
-          });
-      }
     });
     return () => sub.subscription.unsubscribe();
   }, [router, queryClient]);
 
+  // Hard gate: any signed-in user with an incomplete profile is locked into
+  // /onboarding until they finish. Public auth routes are exempt.
+  useEffect(() => {
+    if (!authedUserId) {
+      setOnboardingComplete(null);
+      return;
+    }
+    let cancelled = false;
+    const local = localAuth.get();
+    if (local?.name) {
+      setOnboardingComplete(true);
+      return;
+    }
+    supabase
+      .from("profiles")
+      .select("display_name")
+      .eq("id", authedUserId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return;
+        const filled = !!(data?.display_name && data.display_name.trim().length > 0);
+        setOnboardingComplete(filled);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authedUserId]);
+
+  useEffect(() => {
+    if (!authedUserId || onboardingComplete !== false) return;
+    const path = location.pathname;
+    const exempt = path === "/onboarding" || path === "/auth" || path === "/reset-password";
+    if (!exempt) {
+      router.navigate({ to: "/onboarding", replace: true });
+    }
+  }, [authedUserId, onboardingComplete, location.pathname, router]);
+
   return (
     <QueryClientProvider client={queryClient}>
-      <I18nProvider>
-        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-        <Outlet />
-        <Toaster position="top-center" />
-        <IncidentsPanel />
-      </I18nProvider>
+      <ThemeProvider>
+        <I18nProvider>
+          {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+          <Outlet />
+          <Toaster position="top-center" />
+          <IncidentsPanel />
+        </I18nProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }
