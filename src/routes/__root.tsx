@@ -197,7 +197,26 @@ function RootComponent() {
       local?.level &&
       local?.prefs && local.prefs.length > 0
     );
-    setOnboardingComplete(localComplete);
+    if (localComplete) {
+      setOnboardingComplete(true);
+      return;
+    }
+    // Local data may be missing on a new device — trust the backend profile
+    // as a fallback so returning users aren't forced through onboarding again.
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("display_name, handle")
+        .eq("id", authedUserId)
+        .maybeSingle();
+      if (cancelled) return;
+      const remoteComplete = !!(data?.display_name && data?.handle);
+      setOnboardingComplete(remoteComplete);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [authedUserId, localUser]);
 
   useEffect(() => {
