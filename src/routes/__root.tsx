@@ -189,7 +189,15 @@ function RootComponent() {
     }
     let cancelled = false;
     const local = localAuth.get();
-    if (local?.name) {
+    const localComplete = !!(
+      local?.name &&
+      local?.username &&
+      local?.birthday &&
+      local?.arts && local.arts.length > 0 &&
+      local?.level &&
+      local?.prefs && local.prefs.length > 0
+    );
+    if (localComplete) {
       setOnboardingComplete(true);
       return;
     }
@@ -200,8 +208,10 @@ function RootComponent() {
       .maybeSingle()
       .then(({ data }) => {
         if (cancelled) return;
-        const filled = !!(data?.display_name && data.display_name.trim().length > 0);
-        setOnboardingComplete(filled);
+        // Remote `display_name` alone is not enough — local onboarding state
+        // owns the full required set (arts/level/prefs/birthday).
+        const remoteName = !!(data?.display_name && data.display_name.trim().length > 0);
+        setOnboardingComplete(remoteName && localComplete);
       });
     return () => {
       cancelled = true;
