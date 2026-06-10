@@ -2,7 +2,7 @@
 @source "../src";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:where(:not(.light) *, :not(.light)));
 
 /*
  * STRIVE — Electric Performance dark theme.
