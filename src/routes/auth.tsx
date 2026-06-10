@@ -107,14 +107,13 @@ function AuthPage() {
           options: { emailRedirectTo: `${window.location.origin}/` },
         });
         if (err) throw err;
-        // Email confirmation is required → no session yet. Show "check email" state
-        // instead of navigating; __root will route to /onboarding once they verify.
+        // Email confirmation is disabled → session is created immediately.
+        // If for any reason there's no session, fall back to "check your email".
         if (!data.session) {
           setPendingEmail(parsed.data.email);
           setSubmitting(false);
           return;
         }
-        // Auto-confirmed (dev/old configs): go straight to onboarding.
         navigate({ to: "/onboarding", replace: true });
         return;
       } else {
