@@ -141,7 +141,7 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const router = useRouter();
-  const location = useRouterState({ select: (s) => s.location });
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [authedUserId, setAuthedUserId] = useState<string | null>(null);
   const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(null);
   const localUser = useUser();
@@ -202,12 +202,17 @@ function RootComponent() {
 
   useEffect(() => {
     if (!authedUserId || onboardingComplete !== false) return;
-    const path = location.pathname;
-    const exempt = path === "/onboarding" || path === "/auth" || path === "/reset-password";
-    if (!exempt) {
+    const exempt =
+      pathname === "/onboarding" || pathname === "/auth" || pathname === "/reset-password";
+    if (exempt) return;
+    // Defer to next tick so we don't navigate during a router transition.
+    const id = setTimeout(() => {
+      const current = router.state.location.pathname;
+      if (current === "/onboarding") return;
       router.navigate({ to: "/onboarding", replace: true });
-    }
-  }, [authedUserId, onboardingComplete, location.pathname, router]);
+    }, 0);
+    return () => clearTimeout(id);
+  }, [authedUserId, onboardingComplete, pathname, router]);
 
   return (
     <QueryClientProvider client={queryClient}>
