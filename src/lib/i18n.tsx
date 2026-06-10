@@ -77,6 +77,9 @@ const dict = {
     "profile.saveError": "Could not save your profile.",
     "profile.uploadingAvatar": "Uploading photo…",
     "profile.avatarError": "Could not upload photo.",
+    "profile.theme": "Theme",
+    "profile.themeLight": "Light",
+    "profile.themeDark": "Dark",
   },
   es: {
     "nav.home": "Inicio",
