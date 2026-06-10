@@ -719,18 +719,46 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
+      {/* Account / password */}
+      <div className="pt-2 border-t border-border space-y-3">
+        <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
+          {t("profile.account")}
+        </p>
+        <div className="flex gap-2">
+          <input
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            autoComplete="new-password"
+            placeholder="••••••••"
+            minLength={8}
+            className="profile-input flex-1"
+          />
+          <button
+            type="button"
+            onClick={changePassword}
+            disabled={changingPw || newPassword.length < 8}
+            className="px-4 rounded-xl bg-secondary border border-border text-xs font-bold uppercase tracking-wide disabled:opacity-40"
+          >
+            {changingPw ? "…" : t("profile.changePassword")}
+          </button>
+        </div>
+      </div>
+
       <div className="flex gap-3 pt-2">
         <button
           onClick={onClose}
+          disabled={saving}
           className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-secondary text-secondary-foreground font-bold uppercase tracking-wider text-sm active:scale-[0.98] transition-transform"
         >
           <X className="size-4" /> Cancel
         </button>
         <button
           onClick={save}
+          disabled={saving}
           className="flex-[2] flex items-center justify-center gap-2 py-3 rounded-2xl bg-accent text-accent-foreground font-bold uppercase tracking-wider text-sm active:scale-[0.98] transition-transform"
         >
-          <Check className="size-4" /> Save Changes
+          <Check className="size-4" /> {saving ? t("profile.saving") : "Save Changes"}
         </button>
       </div>
 
