@@ -39,6 +39,14 @@ import { ARTS, LEVELS, type Art } from "@/lib/mock-data";
 import { actions as storeActions } from "@/lib/store";
 import { useUser } from "@/lib/auth";
 import { uploadMedia, type UploadResult } from "@/lib/media-upload";
+import {
+  processVideo,
+  ALLOWED_VIDEO_MIME,
+  VideoValidationError,
+  MAX_VIDEO_MB,
+  COMPRESS_THRESHOLD_MB,
+  type VideoMeta,
+} from "@/lib/video-process";
 
 export const Route = createFileRoute("/_authenticated/create")({
   head: () => ({
@@ -53,7 +61,6 @@ export const Route = createFileRoute("/_authenticated/create")({
 type ActionKey = "video" | "duel" | "training" | "goal" | "achievement";
 
 // ---- Upload limits ----
-const MAX_VIDEO_MB = 100;
 const MAX_IMAGE_MB = 8;
 
 function fileToDataUrl(file: Blob): Promise<string> {
