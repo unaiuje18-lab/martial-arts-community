@@ -39,7 +39,7 @@ export async function getSignedUrl(path: string): Promise<string> {
 export function uploadMedia(
   file: Blob,
   opts: {
-    folder: "videos" | "posters" | "fighters";
+    folder: "videos" | "posters" | "fighters" | "avatars";
     filename?: string;
     contentType?: string;
     onProgress?: (pct: number) => void;

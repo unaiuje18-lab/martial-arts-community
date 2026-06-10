@@ -8,6 +8,9 @@ import { useSupabaseUser } from "@/hooks/use-supabase-user";
 import { useI18n, useT } from "@/lib/i18n";
 import { useStore, computeStreak } from "@/lib/store";
 import { supabase } from "@/integrations/supabase/client";
+import { uploadMedia } from "@/lib/media-upload";
+import { processImage } from "@/lib/image";
+import { authErrorKey } from "@/lib/auth-errors";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -314,6 +317,8 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
 
 function EditProfileForm({ onClose }: { onClose: () => void }) {
   const user = useUser();
+  const t = useT();
+  const { user: authUser } = useSupabaseUser();
   const [name, setName] = useState(user?.name ?? "");
   const [username, setUsername] = useState(user?.username ?? "");
   const [bio, setBio] = useState(user?.bio ?? "");
@@ -322,6 +327,10 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
   const [level, setLevel] = useState<string>(user?.level ?? "Intermediate");
   const [prefs, setPrefs] = useState<string[]>(user?.prefs ?? []);
   const [avatar, setAvatar] = useState<string | undefined>(user?.avatar);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [changingPw, setChangingPw] = useState(false);
   type RankEntry = {
     type: "belt" | "years";
     value: string;
@@ -333,19 +342,29 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
   );
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const onPickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
-    if (f.size > 3 * 1024 * 1024) {
-      alert("Image too large (max 3MB).");
-      return;
+    setAvatarBusy(true);
+    try {
+      // Validate + compress to ≤512px square-ish, then upload to cloud.
+      const processed = await processImage(f, { maxDim: 512, thumbDim: 256, quality: 0.85 });
+      const blob = await (await fetch(processed.full)).blob();
+      const { url } = await uploadMedia(blob, {
+        folder: "avatars",
+        filename: `avatar-${authUser?.id ?? "me"}`,
+        contentType: blob.type || "image/webp",
+      });
+      setAvatar(url);
+    } catch (err) {
+      toast.error((err as Error).message || t("profile.avatarError"));
+    } finally {
+      setAvatarBusy(false);
+      if (fileRef.current) fileRef.current.value = "";
     }
-    const reader = new FileReader();
-    reader.onload = () => setAvatar(reader.result as string);
-    reader.readAsDataURL(f);
   };
 
-  const save = () => {
+  const save = async () => {
     // Validate ranks against active belt system; drop invalid values.
     const cleanRanks: Record<string, RankEntry> = {};
     for (const [art, r] of Object.entries(ranks)) {
@@ -361,19 +380,62 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
         cleanRanks[art] = { type: "years", value: r.value };
       }
     }
-    auth.update({
-      name: name.trim(),
-      username: username.trim().replace(/\s/g, "_").toLowerCase(),
-      bio: bio.trim(),
-      arts,
-      age: age.trim(),
-      level,
-      prefs,
-      avatar,
-      ranks: cleanRanks,
-    });
-    onClose();
+    const cleanName = name.trim();
+    const cleanHandle = username.trim().replace(/\s/g, "_").toLowerCase();
+    setSaving(true);
+    try {
+      // 1. Local-first update so the UI reflects changes immediately.
+      auth.update({
+        name: cleanName,
+        username: cleanHandle,
+        bio: bio.trim(),
+        arts,
+        age: age.trim(),
+        level,
+        prefs,
+        avatar,
+        ranks: cleanRanks,
+      });
+      // 2. Persist the public-facing fields to the backend so they sync across devices.
+      if (authUser) {
+        const { error } = await supabase
+          .from("profiles")
+          .update({
+            display_name: cleanName || null,
+            handle: cleanHandle || authUser.email?.split("@")[0] || "user",
+            bio: bio.trim() || null,
+            primary_art: arts[0] ?? null,
+            avatar_url: avatar ?? null,
+          })
+          .eq("id", authUser.id);
+        if (error) throw error;
+      }
+      toast.success(t("profile.saved"));
+      onClose();
+    } catch (err) {
+      toast.error((err as Error).message || t("profile.saveError"));
+    } finally {
+      setSaving(false);
+    }
   };
+
+  async function changePassword() {
+    if (newPassword.length < 8) {
+      toast.error(t("auth.weakPassword"));
+      return;
+    }
+    setChangingPw(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      setNewPassword("");
+      toast.success(t("profile.passwordUpdated"));
+    } catch (err) {
+      toast.error(t(authErrorKey(err)));
+    } finally {
+      setChangingPw(false);
+    }
+  }
 
   const toggleArt = (a: Art) => {
     setArts((prev) => (prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a]));
@@ -425,7 +487,8 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
       <div className="flex items-center gap-4">
         <button
           type="button"
-          onClick={() => fileRef.current?.click()}
+          onClick={() => !avatarBusy && fileRef.current?.click()}
+          disabled={avatarBusy}
           className="relative size-20 rounded-2xl overflow-hidden border-4 border-white/5 bg-secondary group"
         >
           {avatar ? (
@@ -435,9 +498,17 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
               <Camera className="size-6" />
             </div>
           )}
-          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-            <Camera className="size-5 text-white" />
-          </div>
+          {avatarBusy ? (
+            <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+              <span className="text-[9px] font-mono uppercase text-white tracking-widest text-center px-1">
+                {t("profile.uploadingAvatar")}
+              </span>
+            </div>
+          ) : (
+            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+              <Camera className="size-5 text-white" />
+            </div>
+          )}
         </button>
         <div className="flex-1">
           <p className="text-sm font-semibold">Profile Photo</p>
@@ -648,18 +719,46 @@ function EditProfileForm({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
+      {/* Account / password */}
+      <div className="pt-2 border-t border-border space-y-3">
+        <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
+          {t("profile.account")}
+        </p>
+        <div className="flex gap-2">
+          <input
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            autoComplete="new-password"
+            placeholder="••••••••"
+            minLength={8}
+            className="profile-input flex-1"
+          />
+          <button
+            type="button"
+            onClick={changePassword}
+            disabled={changingPw || newPassword.length < 8}
+            className="px-4 rounded-xl bg-secondary border border-border text-xs font-bold uppercase tracking-wide disabled:opacity-40"
+          >
+            {changingPw ? "…" : t("profile.changePassword")}
+          </button>
+        </div>
+      </div>
+
       <div className="flex gap-3 pt-2">
         <button
           onClick={onClose}
+          disabled={saving}
           className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-secondary text-secondary-foreground font-bold uppercase tracking-wider text-sm active:scale-[0.98] transition-transform"
         >
           <X className="size-4" /> Cancel
         </button>
         <button
           onClick={save}
+          disabled={saving}
           className="flex-[2] flex items-center justify-center gap-2 py-3 rounded-2xl bg-accent text-accent-foreground font-bold uppercase tracking-wider text-sm active:scale-[0.98] transition-transform"
         >
-          <Check className="size-4" /> Save Changes
+          <Check className="size-4" /> {saving ? t("profile.saving") : "Save Changes"}
         </button>
       </div>
 
