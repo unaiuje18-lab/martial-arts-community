@@ -6,7 +6,7 @@ import { ARTS, LEVELS, CONTENT_PREFS, type Art } from "@/lib/mock-data";
 import { auth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { useT } from "@/lib/i18n";
+import { useT, useI18n } from "@/lib/i18n";
 
 export const Route = createFileRoute("/onboarding")({
   head: () => ({
@@ -22,6 +22,7 @@ function Onboarding() {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const t = useT();
+  const { lang, setLang } = useI18n();
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [birthday, setBirthday] = useState("");
@@ -72,6 +73,24 @@ function Onboarding() {
   return (
     <MobileShell>
       <div className="space-y-7 animate-snap-in">
+        <div className="flex justify-end">
+          <div className="inline-flex rounded-full bg-secondary border border-border p-0.5 text-[10px] font-mono uppercase tracking-widest">
+            <button
+              type="button"
+              onClick={() => setLang("en")}
+              className={`px-3 py-1 rounded-full ${lang === "en" ? "bg-accent text-accent-foreground" : "text-muted-foreground"}`}
+            >
+              EN
+            </button>
+            <button
+              type="button"
+              onClick={() => setLang("es")}
+              className={`px-3 py-1 rounded-full ${lang === "es" ? "bg-accent text-accent-foreground" : "text-muted-foreground"}`}
+            >
+              ES
+            </button>
+          </div>
+        </div>
         <header className="space-y-3">
           <p className="text-[10px] font-mono text-accent uppercase tracking-widest">
             {t("onb.step")} {step + 1} / {steps.length}

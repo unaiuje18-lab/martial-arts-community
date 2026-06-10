@@ -39,6 +39,14 @@ import { ARTS, LEVELS, type Art } from "@/lib/mock-data";
 import { actions as storeActions } from "@/lib/store";
 import { useUser } from "@/lib/auth";
 import { uploadMedia, type UploadResult } from "@/lib/media-upload";
+import {
+  processVideo,
+  ALLOWED_VIDEO_MIME,
+  VideoValidationError,
+  MAX_VIDEO_MB,
+  COMPRESS_THRESHOLD_MB,
+  type VideoMeta,
+} from "@/lib/video-process";
 
 export const Route = createFileRoute("/_authenticated/create")({
   head: () => ({
@@ -53,7 +61,6 @@ export const Route = createFileRoute("/_authenticated/create")({
 type ActionKey = "video" | "duel" | "training" | "goal" | "achievement";
 
 // ---- Upload limits ----
-const MAX_VIDEO_MB = 100;
 const MAX_IMAGE_MB = 8;
 
 function fileToDataUrl(file: Blob): Promise<string> {
@@ -109,6 +116,25 @@ function UploadProgressBar({ progress, label }: { progress: number; label: strin
       </div>
     </div>
   );
+}
+
+function stageLabel(stage: string): string {
+  switch (stage) {
+    case "validate":
+      return "Validating video";
+    case "probe":
+      return "Reading video";
+    case "compress":
+      return "Compressing (real-time)";
+    case "uploading":
+      return "Uploading video";
+    case "finalising":
+      return "Finalising";
+    case "done":
+      return "Done";
+    default:
+      return "Preparing";
+  }
 }
 
 const ACTION_LIST: { key: ActionKey; icon: typeof Upload; title: string; desc: string }[] = [
@@ -284,6 +310,12 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
   const [videoUpload, setVideoUpload] = useState<UploadResult | null>(null);
   const [videoProgress, setVideoProgress] = useState(0);
   const [videoUploading, setVideoUploading] = useState(false);
+  const [videoStage, setVideoStage] = useState<
+    "idle" | "validate" | "probe" | "compress" | "uploading" | "finalising" | "done"
+  >("idle");
+  const [videoError, setVideoError] = useState<string | null>(null);
+  const [videoMeta, setVideoMeta] = useState<VideoMeta | null>(null);
+  const [videoCompressed, setVideoCompressed] = useState(false);
 
   // Poster scrubber & crop
   const [duration, setDuration] = useState(0);
@@ -307,50 +339,72 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
     if (videoLocalUrl) URL.revokeObjectURL(videoLocalUrl);
   }, [videoLocalUrl]);
 
-  const startVideoUpload = async (f: File) => {
-    setVideoUploading(true);
-    setVideoProgress(0);
-    try {
-      const result = await uploadMedia(f, {
-        folder: "videos",
-        filename: f.name.replace(/\.[^.]+$/, ""),
-        contentType: f.type,
-        onProgress: (p) => setVideoProgress(p),
-      });
-      setVideoUpload(result);
-      toast.success("Video uploaded");
-    } catch (e) {
-      toast.error((e as Error).message || "Could not upload video");
-      setVideoFile(null);
-      setVideoUpload(null);
-      if (videoLocalUrl) URL.revokeObjectURL(videoLocalUrl);
-      setVideoLocalUrl("");
-    } finally {
-      setVideoUploading(false);
-    }
-  };
-
-  const handleVideoFile = (f: File | null | undefined) => {
+  const handleVideoFile = async (f: File | null | undefined) => {
     if (!f) return;
-    if (!f.type.startsWith("video/")) {
-      toast.error("That file is not a video");
-      return;
-    }
-    const mb = f.size / (1024 * 1024);
-    if (mb > MAX_VIDEO_MB) {
-      toast.error(`Video too large (${mb.toFixed(1)}MB). Max ${MAX_VIDEO_MB}MB.`);
-      return;
-    }
-    if (videoLocalUrl) URL.revokeObjectURL(videoLocalUrl);
-    const local = URL.createObjectURL(f);
-    setVideoFile(f);
-    setVideoLocalUrl(local);
+    setVideoError(null);
     setVideoUpload(null);
     setPosterUpload(null);
     setPosterPreview("");
     setDuration(0);
     setPosterSecond(0.5);
-    void startVideoUpload(f);
+    setVideoCompressed(false);
+    setVideoMeta(null);
+    setVideoUploading(true);
+    setVideoProgress(0);
+
+    let localUrl = "";
+    try {
+      // 1. Validate + (optionally) compress.
+      setVideoStage("validate");
+      const processed = await processVideo(f, {
+        onStage: (s) => setVideoStage(s),
+      });
+      setVideoMeta(processed.meta);
+      setVideoCompressed(processed.compressed);
+
+      const blob = processed.file;
+      localUrl = URL.createObjectURL(blob);
+      if (videoLocalUrl) URL.revokeObjectURL(videoLocalUrl);
+      // Keep a File-shaped object so the preview/UI keeps the original name.
+      setVideoFile(
+        new File([blob], f.name.replace(/\.[^.]+$/, "") + (processed.compressed ? ".webm" : ""), {
+          type: processed.contentType,
+        }),
+      );
+      setVideoLocalUrl(localUrl);
+
+      // 2. Upload to storage.
+      setVideoStage("uploading");
+      const result = await uploadMedia(blob, {
+        folder: "videos",
+        filename: f.name.replace(/\.[^.]+$/, ""),
+        contentType: processed.contentType,
+        onProgress: (p) => setVideoProgress(p),
+      });
+      setVideoStage("finalising");
+      setVideoUpload(result);
+      setVideoStage("done");
+      toast.success(
+        processed.compressed
+          ? `Video uploaded (compressed ${(processed.originalBytes / 1024 / 1024).toFixed(1)} → ${(processed.bytes / 1024 / 1024).toFixed(1)} MB)`
+          : "Video uploaded",
+      );
+    } catch (e) {
+      const err = e as Error;
+      const msg =
+        e instanceof VideoValidationError
+          ? err.message
+          : err.message || "Could not upload video — please try again.";
+      setVideoError(msg);
+      toast.error(msg);
+      setVideoFile(null);
+      setVideoUpload(null);
+      if (localUrl) URL.revokeObjectURL(localUrl);
+      setVideoLocalUrl("");
+      setVideoStage("idle");
+    } finally {
+      setVideoUploading(false);
+    }
   };
 
   const clearVideo = () => {
@@ -363,6 +417,10 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
     setPosterUpload(null);
     setPosterProgress(0);
     setDuration(0);
+    setVideoError(null);
+    setVideoStage("idle");
+    setVideoCompressed(false);
+    setVideoMeta(null);
     if (videoFileRef.current) videoFileRef.current.value = "";
   };
 
@@ -458,7 +516,7 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
         <input
           ref={videoFileRef}
           type="file"
-          accept="video/*"
+          accept={ALLOWED_VIDEO_MIME.join(",")}
           className="hidden"
           onChange={(e) => handleVideoFile(e.target.files?.[0])}
         />
@@ -474,7 +532,10 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
             <Film className="size-7 text-accent" />
             <p className="text-sm font-semibold">Tap to choose a video</p>
             <p className="text-[11px] text-muted-foreground">
-              or drag & drop · MP4 / MOV · up to {MAX_VIDEO_MB}MB
+              or drag & drop · MP4 / MOV / WebM · up to {MAX_VIDEO_MB}MB
+            </p>
+            <p className="text-[10px] text-muted-foreground/70">
+              Files over {COMPRESS_THRESHOLD_MB}MB are compressed automatically when possible.
             </p>
           </button>
         ) : (
@@ -494,7 +555,10 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
             />
             {videoUploading && (
               <div className="px-3 pt-3">
-                <UploadProgressBar progress={videoProgress} label="Uploading video" />
+                <UploadProgressBar
+                  progress={videoStage === "uploading" ? videoProgress : videoStage === "finalising" || videoStage === "done" ? 1 : 0.05}
+                  label={stageLabel(videoStage)}
+                />
               </div>
             )}
             <div className="flex items-center justify-between gap-2 p-3">
@@ -502,6 +566,10 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
                 <p className="text-xs font-semibold truncate">{videoFile?.name || "Selected video"}</p>
                 <p className="text-[10px] font-mono uppercase">
                   {videoFile ? `${(videoFile.size / 1024 / 1024).toFixed(1)}MB` : ""}
+                  {videoMeta && videoMeta.width > 0 ? (
+                    <span className="text-muted-foreground"> · {videoMeta.width}×{videoMeta.height} · {videoMeta.duration.toFixed(0)}s</span>
+                  ) : null}
+                  {videoCompressed && <span className="text-accent"> · compressed</span>}
                   {videoUpload ? (
                     <span className="text-accent"> · saved to cloud</span>
                   ) : videoUploading ? (
@@ -530,6 +598,12 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+        {videoError && (
+          <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive flex items-start gap-2">
+            <X className="size-3.5 mt-0.5 shrink-0" />
+            <span>{videoError}</span>
           </div>
         )}
       </div>
