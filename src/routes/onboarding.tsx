@@ -1,12 +1,13 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Sun, Moon } from "lucide-react";
 import { MobileShell } from "@/components/MobileShell";
 import { ARTS, LEVELS, CONTENT_PREFS, type Art } from "@/lib/mock-data";
 import { auth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useT, useI18n } from "@/lib/i18n";
+import { useTheme } from "@/lib/theme";
 
 export const Route = createFileRoute("/onboarding")({
   head: () => ({
@@ -23,6 +24,7 @@ function Onboarding() {
   const [step, setStep] = useState(0);
   const t = useT();
   const { lang, setLang } = useI18n();
+  const { theme, toggle: toggleTheme } = useTheme();
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [birthday, setBirthday] = useState("");
@@ -73,7 +75,15 @@ function Onboarding() {
   return (
     <MobileShell>
       <div className="space-y-7 animate-snap-in">
-        <div className="flex justify-end">
+        <div className="flex justify-end items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label="Theme"
+            className="size-8 rounded-full bg-secondary border border-border flex items-center justify-center text-muted-foreground"
+          >
+            {theme === "dark" ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />}
+          </button>
           <div className="inline-flex rounded-full bg-secondary border border-border p-0.5 text-[10px] font-mono uppercase tracking-widest">
             <button
               type="button"
