@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowRight, Sun, Moon } from "lucide-react";
 import { MobileShell } from "@/components/MobileShell";
 import { ARTS, LEVELS, CONTENT_PREFS, type Art } from "@/lib/mock-data";
@@ -35,6 +35,11 @@ function Onboarding() {
 
   const stepKeys = ["onb.identity", "onb.disciplines", "onb.skill", "onb.interests"] as const;
   const steps = stepKeys.map((k) => t(k));
+
+  // Clear "attempted" banner whenever the user moves between steps.
+  useEffect(() => {
+    setAttempted(false);
+  }, [step]);
 
   const ageOk = !!birthday && computeAge(birthday) >= 5;
 
