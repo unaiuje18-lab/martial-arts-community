@@ -290,8 +290,10 @@ function Onboarding() {
 
         <button
           onClick={next}
-          disabled={!canContinue}
-          className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-accent text-accent-foreground font-bold uppercase tracking-wider text-sm disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] transition-transform"
+          aria-disabled={!canContinue}
+          className={`w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-accent text-accent-foreground font-bold uppercase tracking-wider text-sm active:scale-[0.98] transition-transform ${
+            !canContinue ? "opacity-60" : ""
+          }`}
         >
           {step === steps.length - 1 ? t("onb.enter") : t("onb.continue")}
           <ArrowRight className="size-4" strokeWidth={2.5} />
