@@ -8,6 +8,7 @@ import { lovable } from "@/integrations/lovable";
 import { MobileShell } from "@/components/MobileShell";
 import { reportLovableError } from "@/lib/lovable-error-reporting";
 import { auth as localAuth } from "@/lib/auth";
+import { useT, useI18n } from "@/lib/i18n";
 
 const schema = z.object({
   email: z.string().trim().email("Enter a valid email").max(255),
@@ -34,6 +35,8 @@ function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const t = useT();
+  const { lang, setLang } = useI18n();
 
   // If a session already exists, bounce to redirect target.
   useEffect(() => {
@@ -112,12 +115,28 @@ function AuthPage() {
   return (
     <MobileShell>
       <div className="space-y-7 animate-snap-in pt-4">
+        <div className="flex justify-end">
+          <div className="inline-flex rounded-full bg-secondary border border-border p-0.5 text-[10px] font-mono uppercase tracking-widest">
+            <button
+              onClick={() => setLang("en")}
+              className={`px-3 py-1 rounded-full ${lang === "en" ? "bg-accent text-accent-foreground" : "text-muted-foreground"}`}
+            >
+              EN
+            </button>
+            <button
+              onClick={() => setLang("es")}
+              className={`px-3 py-1 rounded-full ${lang === "es" ? "bg-accent text-accent-foreground" : "text-muted-foreground"}`}
+            >
+              ES
+            </button>
+          </div>
+        </div>
         <header className="space-y-2 text-center">
           <h1 className="font-display text-4xl uppercase tracking-tight italic">
             STRIVE<span className="text-accent">.</span>
           </h1>
           <p className="text-sm text-muted-foreground">
-            {mode === "signin" ? "Sign in to train, post and compete." : "Create your fighter profile."}
+            {mode === "signin" ? t("auth.signinTitle") : t("auth.signupTitle")}
           </p>
         </header>
 
@@ -126,16 +145,16 @@ function AuthPage() {
           disabled={submitting}
           className="w-full h-12 rounded-xl bg-white text-black font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform disabled:opacity-60"
         >
-          <GoogleIcon /> Continue with Google
+          <GoogleIcon /> {t("auth.continueGoogle")}
         </button>
 
         <div className="flex items-center gap-3 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-          <div className="h-px flex-1 bg-border" /> or <div className="h-px flex-1 bg-border" />
+          <div className="h-px flex-1 bg-border" /> {t("auth.or")} <div className="h-px flex-1 bg-border" />
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3">
           <label className="block">
-            <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Email</span>
+            <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">{t("auth.email")}</span>
             <div className="mt-1 relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
               <input
@@ -150,7 +169,7 @@ function AuthPage() {
             </div>
           </label>
           <label className="block">
-            <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Password</span>
+            <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">{t("auth.password")}</span>
             <div className="mt-1 relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
               <input
@@ -171,30 +190,30 @@ function AuthPage() {
             className="w-full h-12 rounded-xl bg-accent text-accent-foreground font-bold uppercase tracking-wide flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-60"
           >
             {submitting ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}
-            {mode === "signin" ? "Sign in" : "Create account"}
+            {mode === "signin" ? t("auth.signIn") : t("auth.create")}
           </button>
         </form>
 
         <p className="text-center text-xs text-muted-foreground">
           {mode === "signin" ? (
             <>
-              New here?{" "}
+              {t("auth.newHere")}{" "}
               <button onClick={() => setMode("signup")} className="text-accent font-semibold">
-                Create an account
+                {t("auth.createOne")}
               </button>
             </>
           ) : (
             <>
-              Already have an account?{" "}
+              {t("auth.haveAccount")}{" "}
               <button onClick={() => setMode("signin")} className="text-accent font-semibold">
-                Sign in
+                {t("auth.signIn")}
               </button>
             </>
           )}
         </p>
 
         <p className="text-center text-[10px] font-mono text-muted-foreground/70">
-          <Link to="/">← Back to feed</Link>
+          <Link to="/">{t("auth.backFeed")}</Link>
         </p>
       </div>
     </MobileShell>
