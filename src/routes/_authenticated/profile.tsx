@@ -6,6 +6,8 @@ import { BADGES, formatCount, ARTS, LEVELS, CONTENT_PREFS, BELT_SYSTEMS, hasBelt
 import { auth, useUser } from "@/lib/auth";
 import { useSupabaseUser } from "@/hooks/use-supabase-user";
 import { useI18n, useT } from "@/lib/i18n";
+import { useTheme } from "@/lib/theme";
+import { Sun, Moon } from "lucide-react";
 import { useStore, computeStreak } from "@/lib/store";
 import { supabase } from "@/integrations/supabase/client";
 import { uploadMedia } from "@/lib/media-upload";
@@ -43,6 +45,7 @@ function ProfilePage() {
   const userPosts = useStore((s) => s.userPosts);
   const { lang, setLang } = useI18n();
   const t = useT();
+  const { theme, toggle: toggleTheme } = useTheme();
 
   const name = user?.name ?? profile?.display_name ?? "";
   const username = user?.username ?? profile?.handle ?? authUser?.email?.split("@")[0] ?? "";
@@ -91,6 +94,14 @@ function ProfilePage() {
         <header className="flex items-start justify-between">
           <h1 className="font-display text-4xl uppercase tracking-tight italic">{t("profile.title")}</h1>
           <div className="flex items-center gap-2">
+            <button
+              onClick={toggleTheme}
+              aria-label={t("profile.theme")}
+              title={theme === "dark" ? t("profile.themeLight") : t("profile.themeDark")}
+              className="size-9 rounded-full bg-secondary border border-border flex items-center justify-center text-muted-foreground hover:text-foreground"
+            >
+              {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
+            </button>
             <div className="inline-flex rounded-full bg-secondary border border-border p-0.5 text-[10px] font-mono uppercase tracking-widest" aria-label={t("profile.language")}>
               <button
                 onClick={() => setLang("en")}

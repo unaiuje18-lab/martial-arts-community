@@ -155,6 +155,9 @@ const dict = {
     "profile.saveError": "No se pudo guardar el perfil.",
     "profile.uploadingAvatar": "Subiendo foto…",
     "profile.avatarError": "No se pudo subir la foto.",
+    "profile.theme": "Tema",
+    "profile.themeLight": "Claro",
+    "profile.themeDark": "Oscuro",
   },
 } as const;
 
