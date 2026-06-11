@@ -183,6 +183,17 @@ function RootComponent() {
 
   // Hard gate: any signed-in user with an incomplete profile is locked into
   // /onboarding until they finish. Public auth routes are exempt.
+  // Derive a stable signature so this effect only re-runs when the relevant
+  // fields change — not on every unrelated store update.
+  const localSignature = [
+    localUser?.name ?? "",
+    localUser?.username ?? "",
+    localUser?.birthday ?? "",
+    (localUser?.arts ?? []).join(","),
+    localUser?.level ?? "",
+    (localUser?.prefs ?? []).join(","),
+  ].join("|");
+
   useEffect(() => {
     if (!authedUserId) {
       setOnboardingComplete(null);
@@ -217,7 +228,8 @@ function RootComponent() {
     return () => {
       cancelled = true;
     };
-  }, [authedUserId, localUser]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authedUserId, localSignature]);
 
   useEffect(() => {
     if (!authedUserId || onboardingComplete !== false) return;
