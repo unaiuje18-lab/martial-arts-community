@@ -184,25 +184,25 @@ function ConnectionBanner({ online, justReconnected }: { online: boolean; justRe
 
 function FeedSkeleton() {
   return (
-    <div className="h-[100dvh] w-full bg-black relative overflow-hidden">
-      <Skeleton className="absolute inset-0 rounded-none bg-white/5" />
+    <div className="h-[100dvh] w-full bg-background relative overflow-hidden">
+      <Skeleton className="absolute inset-0 rounded-none bg-muted" />
       <div className="absolute top-0 inset-x-0 pt-[max(1rem,env(safe-area-inset-top))] px-5 flex items-center justify-between">
-        <Skeleton className="h-6 w-24 bg-white/10" />
-        <Skeleton className="size-8 rounded-full bg-white/10" />
+        <Skeleton className="h-6 w-24 bg-muted" />
+        <Skeleton className="size-8 rounded-full bg-muted" />
       </div>
       <div className="absolute inset-x-0 bottom-0 p-5 pb-28 space-y-3">
         <div className="flex items-center gap-2">
-          <Skeleton className="size-10 rounded-full bg-white/10" />
+          <Skeleton className="size-10 rounded-full bg-muted" />
           <div className="space-y-2">
-            <Skeleton className="h-3 w-28 bg-white/10" />
-            <Skeleton className="h-2 w-16 bg-white/10" />
+            <Skeleton className="h-3 w-28 bg-muted" />
+            <Skeleton className="h-2 w-16 bg-muted" />
           </div>
         </div>
-        <Skeleton className="h-4 w-3/4 bg-white/10" />
-        <Skeleton className="h-4 w-1/2 bg-white/10" />
+        <Skeleton className="h-4 w-3/4 bg-muted" />
+        <Skeleton className="h-4 w-1/2 bg-muted" />
         <div className="flex gap-2">
-          <Skeleton className="h-5 w-14 bg-white/10" />
-          <Skeleton className="h-5 w-14 bg-white/10" />
+          <Skeleton className="h-5 w-14 bg-muted" />
+          <Skeleton className="h-5 w-14 bg-muted" />
         </div>
       </div>
     </div>
@@ -211,10 +211,10 @@ function FeedSkeleton() {
 
 function FeedEmpty({ onRetry }: { onRetry: () => void }) {
   return (
-    <div className="h-[100dvh] flex flex-col items-center justify-center px-8 text-center bg-black text-white">
-      <Inbox className="size-12 text-white/40 mb-4" />
+    <div className="h-[100dvh] flex flex-col items-center justify-center px-8 text-center bg-background text-foreground">
+      <Inbox className="size-12 text-muted-foreground mb-4" />
       <h2 className="font-display text-2xl uppercase italic tracking-tight">Feed empty</h2>
-      <p className="mt-2 text-sm text-white/60 max-w-xs">
+      <p className="mt-2 text-sm text-muted-foreground max-w-xs">
         No posts yet. Be the first to upload technique.
       </p>
       <button
