@@ -394,21 +394,29 @@ function FeedCard({
   priority,
   active,
   muted,
+  isAuthed,
+  isMine,
+  liked,
+  following,
   onToggleMute,
   onOpenComments,
+  onToggleLike,
+  onToggleFollow,
 }: {
-  post: FeedPost;
+  post: FeedItem;
   priority: boolean;
   active: boolean;
   muted: boolean;
+  isAuthed: boolean;
+  isMine: boolean;
+  liked: boolean;
+  following: boolean;
   onToggleMute: () => void;
   onOpenComments: () => void;
+  onToggleLike: (currentlyLiked: boolean) => void;
+  onToggleFollow: (currentlyFollowing: boolean) => void;
 }) {
-  const liked = useStore((s) => !!s.likes[post.id]);
   const saved = useStore((s) => !!s.saves[post.id]);
-  const following = useStore((s) => !!s.follows[post.handle]);
-  const likeCount = useStore((s) => s.likeCounts[post.id] ?? post.likes);
-  const commentCount = useStore((s) => s.commentCounts[post.id] ?? post.comments);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [paused, setPaused] = useState(false);
 
@@ -432,12 +440,13 @@ function FeedCard({
     >
       <video
         ref={videoRef}
-        src={post.video}
+        src={active || priority ? post.video : undefined}
+        data-src={post.video}
         poster={post.poster}
         muted={muted}
         loop
         playsInline
-        preload={priority ? "auto" : "metadata"}
+        preload={priority ? "auto" : "none"}
         onClick={() => setPaused((p) => !p)}
         className="absolute inset-0 w-full h-full object-cover cursor-pointer"
       />
@@ -452,9 +461,14 @@ function FeedCard({
           </div>
         </button>
       )}
+      {post.visibility === "private" && (
+        <div className="absolute top-[max(1rem,env(safe-area-inset-top))] left-1/2 -translate-x-1/2 z-10 px-2.5 py-1 rounded-full bg-black/60 border border-white/20 text-[10px] font-mono uppercase tracking-widest text-white/80">
+          Private · only you
+        </div>
+      )}
       {/* Top bar */}
       <div className="absolute top-0 inset-x-0 z-10 pt-[max(1rem,env(safe-area-inset-top))] px-5 flex items-center justify-between">
-        <h1 className="font-display text-2xl uppercase tracking-tight italic">
+        <h1 className="font-display text-2xl uppercase tracking-tight italic text-white">
           STRIVE<span className="text-accent">.</span>
         </h1>
         <button
@@ -474,44 +488,58 @@ function FeedCard({
               <div className="size-10 rounded-full border-2 border-accent overflow-hidden bg-secondary" />
               <div>
                 <p className="font-semibold text-sm tracking-tight text-white">{post.handle}</p>
-                <p className="text-[10px] font-mono text-accent uppercase">{post.meta}</p>
+                <p className="text-[10px] font-mono text-accent uppercase">
+                  {post.art} · {post.level}
+                </p>
               </div>
-              <button
-                onClick={() => actions.toggleFollow(post.handle)}
-                className={`ml-2 text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wide active:scale-95 transition-transform ${
-                  following
-                    ? "bg-white/10 text-white border border-white/30"
-                    : "bg-accent text-accent-foreground"
-                }`}
-              >
-                {following ? "Following" : "Follow"}
-              </button>
+              {!isMine && (
+                <button
+                  onClick={() => onToggleFollow(following)}
+                  className={`ml-2 text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wide active:scale-95 transition-transform ${
+                    following
+                      ? "bg-white/10 text-white border border-white/30"
+                      : "bg-accent text-accent-foreground"
+                  }`}
+                >
+                  {following ? "Following" : "Follow"}
+                </button>
+              )}
             </div>
             <p className="text-sm font-medium leading-snug text-white text-pretty">
               {post.caption}
             </p>
-            <div className="flex flex-wrap gap-2">
-              {post.tags.map((t) => (
-                <span
-                  key={t}
-                  className="px-2 py-0.5 bg-white/10 backdrop-blur-sm rounded text-[10px] font-bold uppercase tracking-wide text-white"
-                >
-                  {t}
-                </span>
-              ))}
-            </div>
+            {post.tags.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {post.tags.map((t) => (
+                  <span
+                    key={t}
+                    className="px-2 py-0.5 bg-white/10 backdrop-blur-sm rounded text-[10px] font-bold uppercase tracking-wide text-white"
+                  >
+                    {t}
+                  </span>
+                ))}
+              </div>
+            )}
+            {!isAuthed && (
+              <Link
+                to="/auth"
+                className="inline-block text-[10px] font-mono uppercase tracking-widest text-accent underline"
+              >
+                Sign in to like, comment & follow
+              </Link>
+            )}
           </div>
 
           <div className="flex flex-col gap-5 items-center">
             <FeedAction
               icon={<Heart className={`size-5 ${liked ? "fill-accent text-accent" : ""}`} />}
-              label={formatCount(likeCount)}
-              onClick={() => actions.toggleLike(post.id)}
+              label={formatCount(post.likes)}
+              onClick={() => onToggleLike(liked)}
               active={liked}
             />
             <FeedAction
               icon={<MessageCircle className="size-5" />}
-              label={formatCount(commentCount)}
+              label={formatCount(post.comments)}
               onClick={onOpenComments}
             />
             <FeedAction
@@ -563,14 +591,92 @@ function FeedAction({
   );
 }
 
-function CommentsSheet({ postId, onClose }: { postId: string; onClose: () => void }) {
-  const comments = useStore((s) => s.comments[postId] ?? []);
+function CommentsSheet({
+  postId,
+  isAuthed,
+  authUserId,
+  onClose,
+}: {
+  postId: string;
+  isAuthed: boolean;
+  authUserId?: string;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
   const [text, setText] = useState("");
+  const [replyTo, setReplyTo] = useState<{ id: string; handle: string } | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const commentsQ = useQuery({
+    queryKey: ["comments", postId],
+    queryFn: () => fetchComments(postId),
+    staleTime: 15_000,
+  });
+
+  const addMut = useMutation({
+    mutationFn: (vars: { text: string; parentId: string | null }) =>
+      apiAddComment(postId, vars.text, vars.parentId),
+    onSuccess: () => {
+      setText("");
+      setReplyTo(null);
+      queryClient.invalidateQueries({ queryKey: ["comments", postId] });
+      queryClient.invalidateQueries({ queryKey: ["feed", "infinite"] });
+    },
+    onError: (err) => {
+      const msg = (err as Error).message;
+      if (msg === "AUTH_REQUIRED") toast.error("Sign in to comment");
+      else toast.error(msg || "Could not comment");
+    },
+  });
+
+  const delMut = useMutation({
+    mutationFn: (id: string) => apiDeleteComment(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["comments", postId] });
+      queryClient.invalidateQueries({ queryKey: ["feed", "infinite"] });
+    },
+    onError: (err) => toast.error((err as Error).message || "Could not delete"),
+  });
+
+  const likeMut = useMutation({
+    mutationFn: ({ id, liked }: { id: string; liked: boolean }) => apiToggleCommentLike(id, liked),
+    onMutate: async ({ id, liked }) => {
+      await queryClient.cancelQueries({ queryKey: ["comments", postId] });
+      const prev = queryClient.getQueryData<CommentNode[]>(["comments", postId]);
+      queryClient.setQueryData<CommentNode[]>(["comments", postId], (data) =>
+        data
+          ? data.map((c) => {
+              const apply = (n: CommentNode): CommentNode =>
+                n.id === id
+                  ? { ...n, likedByMe: !liked, likes: Math.max(0, n.likes + (liked ? -1 : 1)) }
+                  : { ...n, replies: n.replies.map(apply) };
+              return apply(c);
+            })
+          : data,
+      );
+      return { prev };
+    },
+    onError: (err, _v, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(["comments", postId], ctx.prev);
+      const msg = (err as Error).message;
+      if (msg === "AUTH_REQUIRED") toast.error("Sign in to like");
+    },
+  });
+
   const submit = () => {
     if (!text.trim()) return;
-    actions.addComment(postId, text);
-    setText("");
+    addMut.mutate({ text, parentId: replyTo?.id ?? null });
   };
+
+  const top = commentsQ.data ?? [];
+  const totalCount = top.reduce((acc, c) => acc + 1 + c.replies.length, 0);
+
+  const startReply = (id: string, handle: string) => {
+    setReplyTo({ id, handle });
+    setText((cur) => (cur.startsWith(`@${handle}`) ? cur : `@${handle} ${cur}`.trim() + " "));
+    inputRef.current?.focus();
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-end" role="dialog" aria-modal="true">
       <button
@@ -581,7 +687,7 @@ function CommentsSheet({ postId, onClose }: { postId: string; onClose: () => voi
       <div className="relative w-full max-h-[75dvh] bg-card border-t border-border rounded-t-2xl flex flex-col animate-snap-in">
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h3 className="font-display uppercase italic tracking-tight">
-            Comments · {comments.length}
+            Comments · {totalCount}
           </h3>
           <button
             onClick={onClose}
@@ -591,20 +697,26 @@ function CommentsSheet({ postId, onClose }: { postId: string; onClose: () => voi
             <X className="size-4" />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {comments.length === 0 && (
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {commentsQ.isPending && (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              <Loader2 className="size-4 animate-spin inline" /> Loading…
+            </p>
+          )}
+          {commentsQ.isSuccess && top.length === 0 && (
             <p className="text-sm text-muted-foreground text-center py-8">
               Be the first to drop analysis.
             </p>
           )}
-          {comments.map((c) => (
-            <div key={c.id} className="flex gap-3">
-              <div className="size-8 rounded-full bg-accent/20 border border-accent/40 shrink-0" />
-              <div className="flex-1">
-                <p className="text-[11px] font-mono text-accent uppercase">{c.author}</p>
-                <p className="text-sm leading-snug">{c.text}</p>
-              </div>
-            </div>
+          {top.map((c) => (
+            <CommentItem
+              key={c.id}
+              c={c}
+              authUserId={authUserId}
+              onLike={(id, liked) => likeMut.mutate({ id, liked })}
+              onDelete={(id) => delMut.mutate(id)}
+              onReply={startReply}
+            />
           ))}
         </div>
         <form
@@ -612,24 +724,134 @@ function CommentsSheet({ postId, onClose }: { postId: string; onClose: () => voi
             e.preventDefault();
             submit();
           }}
-          className="flex items-center gap-2 p-3 border-t border-border pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+          className="border-t border-border pb-[max(0.75rem,env(safe-area-inset-bottom))]"
         >
-          <input
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Add analysis…"
-            className="flex-1 bg-secondary rounded-full px-4 py-2.5 text-sm outline-none focus:ring-1 focus:ring-accent"
-          />
-          <button
-            type="submit"
-            disabled={!text.trim()}
-            className="size-10 rounded-full bg-accent text-accent-foreground flex items-center justify-center disabled:opacity-40"
-            aria-label="Send"
-          >
-            <Send className="size-4" />
-          </button>
+          {replyTo && (
+            <div className="flex items-center justify-between px-3 pt-2 text-[11px] font-mono text-muted-foreground">
+              <span>
+                Replying to <span className="text-accent">@{replyTo.handle}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setReplyTo(null);
+                  setText("");
+                }}
+                className="underline"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+          <div className="flex items-center gap-2 p-3">
+            <input
+              ref={inputRef}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={isAuthed ? "Add analysis…" : "Sign in to comment"}
+              disabled={!isAuthed || addMut.isPending}
+              className="flex-1 bg-secondary rounded-full px-4 py-2.5 text-sm outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+            />
+            <button
+              type="submit"
+              disabled={!isAuthed || !text.trim() || addMut.isPending}
+              className="size-10 rounded-full bg-accent text-accent-foreground flex items-center justify-center disabled:opacity-40"
+              aria-label="Send"
+            >
+              {addMut.isPending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+            </button>
+          </div>
         </form>
       </div>
     </div>
   );
+}
+
+function CommentItem({
+  c,
+  authUserId,
+  onLike,
+  onDelete,
+  onReply,
+  isReply,
+}: {
+  c: CommentNode;
+  authUserId?: string;
+  onLike: (id: string, liked: boolean) => void;
+  onDelete: (id: string) => void;
+  onReply: (id: string, handle: string) => void;
+  isReply?: boolean;
+}) {
+  const handle = c.author?.handle ? `@${c.author.handle}` : "@user";
+  const canDelete = authUserId && authUserId === c.user_id;
+  return (
+    <div className={isReply ? "pl-9" : ""}>
+      <div className="flex gap-3">
+        {c.author?.avatar_url ? (
+          <img src={c.author.avatar_url} alt="" className="size-8 rounded-full object-cover shrink-0" />
+        ) : (
+          <div className="size-8 rounded-full bg-accent/20 border border-accent/40 shrink-0" />
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-baseline gap-2">
+            <p className="text-[11px] font-mono text-accent uppercase truncate">{handle}</p>
+            <p className="text-[10px] font-mono text-muted-foreground">
+              {timeAgo(c.created_at)}
+            </p>
+          </div>
+          <p className="text-sm leading-snug">{c.text}</p>
+          <div className="flex items-center gap-3 mt-1 text-[10px] font-mono uppercase tracking-widest">
+            <button
+              onClick={() => onLike(c.id, c.likedByMe)}
+              className={`flex items-center gap-1 ${c.likedByMe ? "text-accent" : "text-muted-foreground"}`}
+            >
+              <Heart className={`size-3 ${c.likedByMe ? "fill-accent" : ""}`} />
+              {c.likes}
+            </button>
+            {!isReply && (
+              <button
+                onClick={() => onReply(c.id, c.author?.handle ?? "user")}
+                className="flex items-center gap-1 text-muted-foreground"
+              >
+                <ReplyIcon className="size-3" /> Reply
+              </button>
+            )}
+            {canDelete && (
+              <button
+                onClick={() => onDelete(c.id)}
+                className="flex items-center gap-1 text-muted-foreground hover:text-destructive"
+              >
+                <Trash2 className="size-3" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+      {!isReply && c.replies.length > 0 && (
+        <div className="mt-3 space-y-3">
+          {c.replies.map((r) => (
+            <CommentItem
+              key={r.id}
+              c={r}
+              authUserId={authUserId}
+              onLike={onLike}
+              onDelete={onDelete}
+              onReply={onReply}
+              isReply
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function timeAgo(iso: string): string {
+  const d = new Date(iso).getTime();
+  const s = Math.max(1, Math.floor((Date.now() - d) / 1000));
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h`;
+  if (s < 30 * 86400) return `${Math.floor(s / 86400)}d`;
+  return new Date(iso).toLocaleDateString();
 }
