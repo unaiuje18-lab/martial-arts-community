@@ -329,6 +329,9 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
   const [caption, setCaption] = useState("");
   const [art, setArt] = useState<Art | null>(null);
   const [level, setLevel] = useState<(typeof LEVELS)[number] | null>(null);
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
+  const [visibility, setVisibility] = useState<"public" | "private">("public");
   const [dragOver, setDragOver] = useState(false);
   const [publishing, setPublishing] = useState(false);
 
@@ -498,6 +501,8 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
         posterPath: posterUpload.path,
         art,
         level,
+        visibility,
+        tags: tags.length ? tags : undefined,
       });
       toast.success("Video published to your feed");
       onClose();
@@ -511,7 +516,147 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
   return (
     <div className="space-y-5 pb-6">
       <FormHeader title="Upload Video" desc="Share a clip with the community." />
-      <div className="space-y-1.5">
+      <div className="grid grid-cols-[140px_1fr] gap-4 items-start">
+        {/* Small 9:16 preview on the left, TikTok-style */}
+        <div className="space-y-1.5">
+          <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">Video</span>
+          <input
+            ref={videoFileRef}
+            type="file"
+            accept={ALLOWED_VIDEO_MIME.join(",")}
+            className="hidden"
+            onChange={(e) => handleVideoFile(e.target.files?.[0])}
+          />
+          {!videoLocalUrl ? (
+            <button
+              type="button"
+              onClick={() => videoFileRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => { e.preventDefault(); setDragOver(false); handleVideoFile(e.dataTransfer.files?.[0]); }}
+              className={`w-full aspect-[9/16] flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed transition-colors ${dragOver ? "border-accent bg-accent/5" : "border-border bg-card/50"}`}
+            >
+              <Film className="size-6 text-accent" />
+              <p className="text-[10px] text-center font-bold uppercase tracking-wider px-2">Tap to add</p>
+              <p className="text-[9px] text-muted-foreground text-center px-2">
+                MP4 · MOV · WebM
+              </p>
+            </button>
+          ) : (
+            <div className="rounded-2xl border border-border bg-black overflow-hidden">
+              <video
+                ref={videoElRef}
+                src={videoLocalUrl}
+                controls
+                playsInline
+                preload="metadata"
+                onLoadedMetadata={(e) => {
+                  const v = e.currentTarget;
+                  setDuration(v.duration || 0);
+                  setPosterSecond(Math.min(0.5, (v.duration || 1) / 4));
+                }}
+                className="w-full aspect-[9/16] bg-black object-cover"
+              />
+            </div>
+          )}
+          {videoLocalUrl && (
+            <div className="flex gap-1.5">
+              <button
+                type="button"
+                disabled={videoUploading}
+                onClick={() => videoFileRef.current?.click()}
+                className="flex-1 px-2 py-1.5 rounded-lg bg-secondary border border-border text-[10px] font-bold uppercase tracking-wide disabled:opacity-40"
+              >
+                Replace
+              </button>
+              <button
+                type="button"
+                disabled={videoUploading}
+                onClick={clearVideo}
+                aria-label="Remove"
+                className="px-2 py-1.5 rounded-lg bg-secondary border border-border text-muted-foreground disabled:opacity-40"
+              >
+                <Trash2 className="size-3" />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Right column: caption + meta */}
+        <div className="space-y-3 min-w-0">
+          <Field label="Caption">
+            <textarea
+              value={caption}
+              onChange={(e) => setCaption(e.target.value.slice(0, 220))}
+              rows={4}
+              placeholder="Describe the technique, what you're drilling…"
+              className="profile-input resize-none text-sm"
+            />
+            <span className="text-[9px] font-mono text-muted-foreground">{caption.length}/220</span>
+          </Field>
+
+          <div className="space-y-1.5">
+            <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">Hashtags</span>
+            <div className="flex flex-wrap gap-1.5 items-center bg-secondary/40 border border-border rounded-xl px-2 py-1.5">
+              {tags.map((t) => (
+                <span
+                  key={t}
+                  className="inline-flex items-center gap-1 bg-accent/15 text-accent text-[10px] font-bold uppercase tracking-wider rounded-md px-1.5 py-0.5"
+                >
+                  #{t}
+                  <button
+                    type="button"
+                    onClick={() => setTags((cur) => cur.filter((x) => x !== t))}
+                    className="hover:opacity-70"
+                    aria-label={`Remove ${t}`}
+                  >
+                    <X className="size-2.5" />
+                  </button>
+                </span>
+              ))}
+              <input
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if ((e.key === "Enter" || e.key === " " || e.key === ",") && tagInput.trim()) {
+                    e.preventDefault();
+                    const t = tagInput.trim().replace(/^#/, "").replace(/[^a-zA-Z0-9_]/g, "").toLowerCase();
+                    if (t && !tags.includes(t) && tags.length < 8) setTags((cur) => [...cur, t]);
+                    setTagInput("");
+                  } else if (e.key === "Backspace" && !tagInput && tags.length) {
+                    setTags((cur) => cur.slice(0, -1));
+                  }
+                }}
+                placeholder={tags.length ? "" : "kimura, halfguard…"}
+                className="flex-1 min-w-[80px] bg-transparent text-xs outline-none py-1"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {videoUploading && (
+        <UploadProgressBar
+          progress={videoStage === "uploading" ? videoProgress : videoStage === "finalising" || videoStage === "done" ? 1 : 0.05}
+          label={stageLabel(videoStage)}
+        />
+      )}
+      {videoError && (
+        <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive flex items-start gap-2">
+          <X className="size-3.5 mt-0.5 shrink-0" />
+          <span>{videoError}</span>
+        </div>
+      )}
+      {videoFile && (
+        <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">
+          {(videoFile.size / 1024 / 1024).toFixed(1)}MB
+          {videoMeta && videoMeta.width > 0 ? ` · ${videoMeta.width}×${videoMeta.height} · ${videoMeta.duration.toFixed(0)}s` : ""}
+          {videoCompressed && <span className="text-accent"> · compressed</span>}
+          {videoUpload && <span className="text-accent"> · saved to cloud</span>}
+        </p>
+      )}
+
+      <div className="space-y-1.5 hidden">
         <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">Video</span>
         <input
           ref={videoFileRef}
@@ -676,15 +821,6 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
-      <Field label="Caption">
-        <textarea
-          value={caption}
-          onChange={(e) => setCaption(e.target.value.slice(0, 220))}
-          rows={3}
-          placeholder="What technique are you drilling?"
-          className="profile-input resize-none"
-        />
-      </Field>
       <div className="space-y-2">
         <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">Discipline</span>
         <ChipGrid options={ARTS} value={art} onChange={setArt} />
@@ -695,16 +831,39 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="space-y-2">
-        <PreviewLabel>Feed Preview</PreviewLabel>
-        <MobilePreviewFrame>
-          <VideoPreview
-            handle={user?.username ? `@${user.username}` : "@you"}
-            caption={caption || "Your caption will appear here…"}
-            art={art ?? "BJJ"}
-            level={level ?? "Beginner"}
-            poster={posterPreview || undefined}
-          />
-        </MobilePreviewFrame>
+        <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">Visibility</span>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => setVisibility("public")}
+            className={`p-3 rounded-xl border text-left transition-colors ${
+              visibility === "public"
+                ? "bg-accent/10 border-accent text-foreground"
+                : "bg-card border-border text-muted-foreground"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Eye className="size-4" />
+              <p className="font-bold text-xs uppercase tracking-wide">Public</p>
+            </div>
+            <p className="text-[10px] mt-1">Anyone can see this in the feed.</p>
+          </button>
+          <button
+            type="button"
+            onClick={() => setVisibility("private")}
+            className={`p-3 rounded-xl border text-left transition-colors ${
+              visibility === "private"
+                ? "bg-accent/10 border-accent text-foreground"
+                : "bg-card border-border text-muted-foreground"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Trash2 className="size-4 hidden" />
+              <p className="font-bold text-xs uppercase tracking-wide">Only me</p>
+            </div>
+            <p className="text-[10px] mt-1">Saved to your profile, hidden from others.</p>
+          </button>
+        </div>
       </div>
 
       {missing.length > 0 && (
