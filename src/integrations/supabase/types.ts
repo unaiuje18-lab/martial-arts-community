@@ -14,6 +14,61 @@ export type Database = {
   }
   public: {
     Tables: {
+      comment_likes: {
+        Row: {
+          comment_id: string
+          created_at: string
+          user_id: string
+        }
+        Insert: {
+          comment_id: string
+          created_at?: string
+          user_id: string
+        }
+        Update: {
+          comment_id?: string
+          created_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comment_likes_comment_id_fkey"
+            columns: ["comment_id"]
+            isOneToOne: false
+            referencedRelation: "post_comments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      duel_votes: {
+        Row: {
+          created_at: string
+          duel_id: string
+          side: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          duel_id: string
+          side: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          duel_id?: string
+          side?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "duel_votes_duel_id_fkey"
+            columns: ["duel_id"]
+            isOneToOne: false
+            referencedRelation: "duels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       duels: {
         Row: {
           a_handle: string
@@ -62,6 +117,95 @@ export type Database = {
         }
         Relationships: []
       }
+      follows: {
+        Row: {
+          created_at: string
+          follower_id: string
+          following_id: string
+        }
+        Insert: {
+          created_at?: string
+          follower_id: string
+          following_id: string
+        }
+        Update: {
+          created_at?: string
+          follower_id?: string
+          following_id?: string
+        }
+        Relationships: []
+      }
+      post_comments: {
+        Row: {
+          created_at: string
+          id: string
+          likes: number
+          parent_id: string | null
+          post_id: string
+          text: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          likes?: number
+          parent_id?: string | null
+          post_id: string
+          text: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          likes?: number
+          parent_id?: string | null
+          post_id?: string
+          text?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_comments_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "post_comments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "post_comments_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      post_likes: {
+        Row: {
+          created_at: string
+          post_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          post_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          post_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_likes_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       posts: {
         Row: {
           art: string
@@ -78,6 +222,7 @@ export type Database = {
           user_id: string | null
           video: string
           video_path: string | null
+          visibility: string
         }
         Insert: {
           art: string
@@ -94,6 +239,7 @@ export type Database = {
           user_id?: string | null
           video: string
           video_path?: string | null
+          visibility?: string
         }
         Update: {
           art?: string
@@ -110,6 +256,7 @@ export type Database = {
           user_id?: string | null
           video?: string
           video_path?: string | null
+          visibility?: string
         }
         Relationships: []
       }
@@ -146,12 +293,51 @@ export type Database = {
         }
         Relationships: []
       }
+      user_art_affinity: {
+        Row: {
+          art: string
+          score: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          art: string
+          score?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          art?: string
+          score?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_feed: {
+        Args: { p_cursor: string; p_limit?: number }
+        Returns: {
+          art: string
+          caption: string
+          comments: number
+          created_at: string
+          handle: string
+          id: string
+          level: string
+          likes: number
+          poster: string
+          score: number
+          tags: string[]
+          user_id: string
+          video: string
+          visibility: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

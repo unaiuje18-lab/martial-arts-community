@@ -1,6 +1,7 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
-import { Lock, Flame, Award, Pencil, X, Check, Camera, Plus, Trash2, Download, LogOut } from "lucide-react";
+import { Lock, Flame, Award, Pencil, X, Check, Camera, Plus, Trash2, Download, LogOut, Eye, EyeOff, MoreVertical, Loader2, Video as VideoIcon } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { MobileShell } from "@/components/MobileShell";
 import { BADGES, formatCount, ARTS, LEVELS, CONTENT_PREFS, BELT_SYSTEMS, hasBelts, type Art } from "@/lib/mock-data";
 import { auth, useUser } from "@/lib/auth";
@@ -9,6 +10,7 @@ import { useI18n, useT } from "@/lib/i18n";
 import { useTheme } from "@/lib/theme";
 import { Sun, Moon } from "lucide-react";
 import { useStore, computeStreak } from "@/lib/store";
+import { fetchMyPosts, updatePostVisibility, deletePost, fetchFollowCounts, type PostRow } from "@/lib/social";
 import { supabase } from "@/integrations/supabase/client";
 import { uploadMedia } from "@/lib/media-upload";
 import { processImage } from "@/lib/image";
@@ -43,6 +45,39 @@ function ProfilePage() {
   const [open, setOpen] = useState(false);
   const sessions = useStore((s) => s.sessions);
   const userPosts = useStore((s) => s.userPosts);
+  const queryClient2 = queryClient;
+
+  const myVideosQ = useQuery({
+    queryKey: ["profile", "myVideos", authUser?.id],
+    queryFn: fetchMyPosts,
+    enabled: !!authUser,
+    staleTime: 30_000,
+  });
+  const followCountsQ = useQuery({
+    queryKey: ["profile", "followCounts", authUser?.id],
+    queryFn: () => fetchFollowCounts(authUser!.id),
+    enabled: !!authUser,
+    staleTime: 60_000,
+  });
+  const visibilityMut = useMutation({
+    mutationFn: ({ id, visibility }: { id: string; visibility: "public" | "private" }) =>
+      updatePostVisibility(id, visibility),
+    onSuccess: () => {
+      queryClient2.invalidateQueries({ queryKey: ["profile", "myVideos"] });
+      queryClient2.invalidateQueries({ queryKey: ["feed", "infinite"] });
+      toast.success("Visibility updated");
+    },
+    onError: (err) => toast.error((err as Error).message || "Could not update"),
+  });
+  const deleteMut = useMutation({
+    mutationFn: (p: PostRow) => deletePost(p.id, p.video_path, p.poster_path),
+    onSuccess: () => {
+      queryClient2.invalidateQueries({ queryKey: ["profile", "myVideos"] });
+      queryClient2.invalidateQueries({ queryKey: ["feed", "infinite"] });
+      toast.success("Video deleted");
+    },
+    onError: (err) => toast.error((err as Error).message || "Could not delete"),
+  });
   const { lang, setLang } = useI18n();
   const t = useT();
   const { theme, toggle: toggleTheme } = useTheme();
@@ -61,8 +96,8 @@ function ProfilePage() {
   const level = Math.floor(xp / 500) + 1;
   const xpToNext = level * 500;
   const xpPct = Math.min(100, Math.round((xp / xpToNext) * 100));
-  const followers = 0;
-  const following = 0;
+  const followers = followCountsQ.data?.followers ?? 0;
+  const following = followCountsQ.data?.following ?? 0;
 
   // Earned badges derive from real activity.
   const earnedBadges: Record<string, boolean> = {
@@ -310,8 +345,117 @@ function ProfilePage() {
             })}
           </div>
         </section>
+
+        {/* Your videos */}
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="font-display text-xl uppercase italic tracking-tight">Your videos</h3>
+            <span className="text-[10px] font-mono text-muted-foreground">
+              {myVideosQ.data?.length ?? 0}
+            </span>
+          </div>
+          {myVideosQ.isPending ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">
+              <Loader2 className="size-4 inline animate-spin" /> Loading…
+            </div>
+          ) : !myVideosQ.data || myVideosQ.data.length === 0 ? (
+            <div className="py-8 text-center text-sm text-muted-foreground border border-dashed border-border rounded-xl">
+              <VideoIcon className="size-6 mx-auto mb-2 opacity-50" />
+              No videos yet. Upload one from the + button.
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              {myVideosQ.data.map((p) => (
+                <MyVideoTile
+                  key={p.id}
+                  post={p}
+                  busy={visibilityMut.isPending || deleteMut.isPending}
+                  onToggleVisibility={() =>
+                    visibilityMut.mutate({
+                      id: p.id,
+                      visibility: p.visibility === "public" ? "private" : "public",
+                    })
+                  }
+                  onDelete={() => {
+                    if (confirm("Delete this video? This cannot be undone.")) deleteMut.mutate(p);
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </section>
       </div>
     </MobileShell>
+  );
+}
+
+function MyVideoTile({
+  post,
+  busy,
+  onToggleVisibility,
+  onDelete,
+}: {
+  post: PostRow;
+  busy: boolean;
+  onToggleVisibility: () => void;
+  onDelete: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative aspect-[9/14] rounded-xl overflow-hidden bg-secondary group">
+      <img src={post.poster} alt="" className="absolute inset-0 w-full h-full object-cover" />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent" />
+      {post.visibility === "private" && (
+        <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/70 text-[9px] font-mono uppercase tracking-widest text-white flex items-center gap-1">
+          <EyeOff className="size-2.5" /> Private
+        </div>
+      )}
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-label="Manage"
+        className="absolute top-1 right-1 size-7 rounded-full bg-black/60 backdrop-blur flex items-center justify-center text-white"
+      >
+        <MoreVertical className="size-3.5" />
+      </button>
+      {open && (
+        <>
+          <button
+            aria-label="Close menu"
+            onClick={() => setOpen(false)}
+            className="fixed inset-0 z-30"
+          />
+          <div className="absolute top-9 right-1 z-40 bg-card border border-border rounded-lg shadow-xl py-1 min-w-[140px]">
+            <button
+              onClick={() => {
+                setOpen(false);
+                onToggleVisibility();
+              }}
+              disabled={busy}
+              className="w-full text-left flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-secondary disabled:opacity-50"
+            >
+              {post.visibility === "public" ? (
+                <><EyeOff className="size-3.5" /> Make private</>
+              ) : (
+                <><Eye className="size-3.5" /> Make public</>
+              )}
+            </button>
+            <button
+              onClick={() => {
+                setOpen(false);
+                onDelete();
+              }}
+              disabled={busy}
+              className="w-full text-left flex items-center gap-2 px-3 py-1.5 text-xs text-destructive hover:bg-destructive/10 disabled:opacity-50"
+            >
+              <Trash2 className="size-3.5" /> Delete
+            </button>
+          </div>
+        </>
+      )}
+      <div className="absolute inset-x-0 bottom-0 p-2">
+        <p className="text-[10px] font-bold text-white line-clamp-2 leading-tight">{post.caption}</p>
+      </div>
+    </div>
   );
 }
 

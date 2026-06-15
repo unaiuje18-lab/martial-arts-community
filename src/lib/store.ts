@@ -288,6 +288,7 @@ export const actions = {
     tags?: string[];
     videoPath?: string;
     posterPath?: string;
+    visibility?: "public" | "private";
   }): Promise<FeedPost> {
     const tags = input.tags?.length ? input.tags : [input.art, input.level];
     return (async () => {
@@ -306,6 +307,7 @@ export const actions = {
           art: input.art,
           level: input.level,
           tags,
+          visibility: input.visibility ?? "public",
         })
         .select()
         .single();
