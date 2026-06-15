@@ -1,36 +1,47 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
-import { Heart, MessageCircle, Bookmark, Share2, Volume2, VolumeX, Play, X, Send, RefreshCw, AlertTriangle, Inbox, WifiOff, Wifi } from "lucide-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Heart,
+  MessageCircle,
+  Bookmark,
+  Share2,
+  Volume2,
+  VolumeX,
+  Play,
+  X,
+  Send,
+  RefreshCw,
+  AlertTriangle,
+  Inbox,
+  WifiOff,
+  Wifi,
+  Loader2,
+  Trash2,
+  Reply as ReplyIcon,
+} from "lucide-react";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { MobileShell } from "@/components/MobileShell";
-import { formatCount, type FeedPost } from "@/lib/mock-data";
-import { actions, useStore, fetchBackendFeed, applyBackendFeed, type BackendFeed } from "@/lib/store";
+import { formatCount } from "@/lib/mock-data";
+import { actions, useStore } from "@/lib/store";
 import { Skeleton } from "@/components/ui/skeleton";
 import { reportLovableError } from "@/lib/lovable-error-reporting";
-import { measureQuery } from "@/lib/metrics";
 import { useOnlineStatus } from "@/hooks/use-online-status";
-
-const FEED_CACHE_KEY = "strive:feed-cache:v1";
-
-function readFeedCache(): BackendFeed | undefined {
-  if (typeof window === "undefined") return undefined;
-  try {
-    const raw = localStorage.getItem(FEED_CACHE_KEY);
-    if (!raw) return undefined;
-    return JSON.parse(raw) as BackendFeed;
-  } catch {
-    return undefined;
-  }
-}
-
-function writeFeedCache(data: BackendFeed) {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(FEED_CACHE_KEY, JSON.stringify(data));
-  } catch {
-    /* quota — ignore */
-  }
-}
+import { useSupabaseUser } from "@/hooks/use-supabase-user";
+import {
+  FEED_PAGE_SIZE,
+  fetchFeedPage,
+  fetchMyLikedSet,
+  fetchMyFollowingSet,
+  toggleLike as apiToggleLike,
+  toggleFollow as apiToggleFollow,
+  fetchComments,
+  addComment as apiAddComment,
+  deleteComment as apiDeleteComment,
+  toggleCommentLike as apiToggleCommentLike,
+  type FeedItem,
+  type CommentNode,
+} from "@/lib/social";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -43,51 +54,69 @@ export const Route = createFileRoute("/")({
 });
 
 function FeedPage() {
-  const userPosts = useStore((s) => s.userPosts);
   const queryClient = useQueryClient();
   const { online, justReconnected } = useOnlineStatus();
+  const { user: authUser } = useSupabaseUser();
 
-  const hydration = useQuery({
-    queryKey: ["feed", "hydration"],
-    queryFn: async () => {
-      const data = await measureQuery("feed.hydration", () => fetchBackendFeed());
-      applyBackendFeed(data);
-      writeFeedCache(data);
-      return data;
-    },
-    // Critical query: aggressive retry with exponential backoff via QueryClient
-    // defaults. Keep cached for a minute so back-nav is instant.
-    staleTime: 60_000,
-    // Offline-first: seed from persistent cache so the feed renders instantly.
-    initialData: () => {
-      const cached = readFeedCache();
-      if (cached) applyBackendFeed(cached);
-      return cached;
-    },
-    // Don't keep hammering the network when offline.
+  // Paginated feed with cursor by created_at, ranked by affinity on the server.
+  const feedQ = useInfiniteQuery({
+    queryKey: ["feed", "infinite", authUser?.id ?? "anon"],
+    queryFn: ({ pageParam }) => fetchFeedPage(pageParam as string | null),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) =>
+      last.length < FEED_PAGE_SIZE ? undefined : last[last.length - 1]?.created_at ?? undefined,
+    staleTime: 30_000,
     enabled: online,
     networkMode: "offlineFirst",
   });
 
   useEffect(() => {
-    if (hydration.error) {
-      reportLovableError(hydration.error, { source: "feed_hydration" }, { handled: true });
+    if (feedQ.error) {
+      reportLovableError(feedQ.error, { source: "feed_hydration" }, { handled: true });
     }
-  }, [hydration.error]);
+  }, [feedQ.error]);
 
-  // Auto-refetch when the connection comes back.
   useEffect(() => {
     if (justReconnected) {
-      queryClient.invalidateQueries({ queryKey: ["feed", "hydration"] });
+      queryClient.invalidateQueries({ queryKey: ["feed", "infinite"] });
     }
   }, [justReconnected, queryClient]);
 
-  const feed = userPosts;
+  const feed = useMemo<FeedItem[]>(
+    () => (feedQ.data?.pages ?? []).flat(),
+    [feedQ.data],
+  );
+
+  // Fetch which posts the user already liked / follows, in batch per page.
+  const visibleIds = useMemo(() => feed.map((p) => p.id), [feed]);
+  const visibleAuthors = useMemo(
+    () => Array.from(new Set(feed.map((p) => p.user_id).filter(Boolean))),
+    [feed],
+  );
+
+  const likedQ = useQuery({
+    queryKey: ["feed", "liked", authUser?.id, visibleIds.join(",")],
+    queryFn: () => fetchMyLikedSet(visibleIds),
+    enabled: !!authUser && visibleIds.length > 0,
+    staleTime: 60_000,
+  });
+  const followingQ = useQuery({
+    queryKey: ["feed", "following", authUser?.id, visibleAuthors.join(",")],
+    queryFn: () => fetchMyFollowingSet(visibleAuthors),
+    enabled: !!authUser && visibleAuthors.length > 0,
+    staleTime: 60_000,
+  });
+
   const [muted, setMuted] = useState(true);
   const [activeId, setActiveId] = useState<string>(feed[0]?.id ?? "");
   const [openComments, setOpenComments] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    if (!activeId && feed[0]?.id) setActiveId(feed[0].id);
+  }, [feed, activeId]);
+
+  // Observe which card is mostly on-screen; also auto-page when nearing the end.
   useEffect(() => {
     const root = containerRef.current;
     if (!root) return;
@@ -98,19 +127,91 @@ function FeedPage() {
           .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
         if (best) {
           const id = (best.target as HTMLElement).dataset.id;
-          if (id) setActiveId(id);
+          if (id) {
+            setActiveId(id);
+            const idx = feed.findIndex((p) => p.id === id);
+            // Trigger next page when within 2 of the end.
+            if (
+              idx >= 0 &&
+              idx >= feed.length - 2 &&
+              feedQ.hasNextPage &&
+              !feedQ.isFetchingNextPage
+            ) {
+              feedQ.fetchNextPage();
+            }
+          }
         }
       },
       { root, threshold: [0.6] },
     );
     root.querySelectorAll<HTMLElement>("[data-feed-card]").forEach((el) => obs.observe(el));
     return () => obs.disconnect();
-  }, [userPosts.length]);
+  }, [feed, feedQ]);
+
+  // Like mutation — optimistic update on the in-memory liked set + counts.
+  const likeMut = useMutation({
+    mutationFn: ({ postId, liked }: { postId: string; liked: boolean }) =>
+      apiToggleLike(postId, liked),
+    onMutate: async ({ postId, liked }) => {
+      const key = ["feed", "liked", authUser?.id, visibleIds.join(",")];
+      await queryClient.cancelQueries({ queryKey: ["feed"] });
+      const prev = queryClient.getQueryData<Set<string>>(key) ?? new Set<string>();
+      const next = new Set(prev);
+      if (liked) next.delete(postId);
+      else next.add(postId);
+      queryClient.setQueryData(key, next);
+      // Bump counts locally on each cached page.
+      queryClient.setQueryData(
+        ["feed", "infinite", authUser?.id ?? "anon"],
+        (data: { pages: FeedItem[][]; pageParams: unknown[] } | undefined) => {
+          if (!data) return data;
+          return {
+            ...data,
+            pages: data.pages.map((p) =>
+              p.map((it) =>
+                it.id === postId
+                  ? { ...it, likes: Math.max(0, it.likes + (liked ? -1 : 1)) }
+                  : it,
+              ),
+            ),
+          };
+        },
+      );
+      return { prev, key };
+    },
+    onError: (err, _vars, ctx) => {
+      if (ctx?.key) queryClient.setQueryData(ctx.key, ctx.prev);
+      const msg = (err as Error).message;
+      if (msg === "AUTH_REQUIRED") toast.error("Sign in to like posts");
+      else toast.error(msg || "Could not like");
+    },
+  });
+
+  const followMut = useMutation({
+    mutationFn: ({ userId, following }: { userId: string; following: boolean }) =>
+      apiToggleFollow(userId, following),
+    onMutate: async ({ userId, following }) => {
+      const key = ["feed", "following", authUser?.id, visibleAuthors.join(",")];
+      await queryClient.cancelQueries({ queryKey: ["feed", "following"] });
+      const prev = queryClient.getQueryData<Set<string>>(key) ?? new Set<string>();
+      const next = new Set(prev);
+      if (following) next.delete(userId);
+      else next.add(userId);
+      queryClient.setQueryData(key, next);
+      return { prev, key };
+    },
+    onError: (err, _vars, ctx) => {
+      if (ctx?.key) queryClient.setQueryData(ctx.key, ctx.prev);
+      const msg = (err as Error).message;
+      if (msg === "AUTH_REQUIRED") toast.error("Sign in to follow");
+      else toast.error(msg || "Could not follow");
+    },
+  });
 
   // First-paint loading: only when we have no fallback content to show.
-  const isInitialLoading = hydration.isPending && userPosts.length === 0;
-  const hasError = !!hydration.error;
-  const isEmpty = !hydration.isPending && feed.length === 0;
+  const isInitialLoading = feedQ.isPending && feed.length === 0;
+  const hasError = !!feedQ.error;
+  const isEmpty = !feedQ.isPending && feed.length === 0;
 
   if (isInitialLoading) {
     return (
@@ -124,7 +225,7 @@ function FeedPage() {
     return (
       <MobileShell fullBleed>
         <ConnectionBanner online={online} justReconnected={justReconnected} />
-        <FeedEmpty onRetry={() => hydration.refetch()} />
+        <FeedEmpty onRetry={() => feedQ.refetch()} />
       </MobileShell>
     );
   }
@@ -134,9 +235,9 @@ function FeedPage() {
       <ConnectionBanner online={online} justReconnected={justReconnected} />
       {hasError && (
         <FeedErrorBanner
-          error={hydration.error as Error}
-          onRetry={() => hydration.refetch()}
-          isRetrying={hydration.isFetching}
+          error={feedQ.error as Error}
+          onRetry={() => feedQ.refetch()}
+          isRetrying={feedQ.isFetching}
         />
       )}
       <div
@@ -151,13 +252,36 @@ function FeedPage() {
             priority={i === 0}
             active={activeId === post.id}
             muted={muted}
+            isAuthed={!!authUser}
+            isMine={!!authUser && post.user_id === authUser.id}
+            liked={likedQ.data?.has(post.id) ?? false}
+            following={followingQ.data?.has(post.user_id) ?? false}
             onToggleMute={() => setMuted((v) => !v)}
             onOpenComments={() => setOpenComments(post.id)}
+            onToggleLike={(liked) => likeMut.mutate({ postId: post.id, liked })}
+            onToggleFollow={(following) =>
+              followMut.mutate({ userId: post.user_id, following })
+            }
           />
         ))}
+        {feedQ.isFetchingNextPage && (
+          <div className="h-20 flex items-center justify-center text-muted-foreground">
+            <Loader2 className="size-5 animate-spin" />
+          </div>
+        )}
+        {!feedQ.hasNextPage && feed.length > 0 && (
+          <div className="h-24 flex items-center justify-center text-[10px] font-mono uppercase tracking-widest text-muted-foreground/60">
+            End of feed
+          </div>
+        )}
       </div>
       {openComments && (
-        <CommentsSheet postId={openComments} onClose={() => setOpenComments(null)} />
+        <CommentsSheet
+          postId={openComments}
+          isAuthed={!!authUser}
+          authUserId={authUser?.id}
+          onClose={() => setOpenComments(null)}
+        />
       )}
     </MobileShell>
   );
