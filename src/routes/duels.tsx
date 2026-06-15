@@ -1,8 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { MessageCircle, CheckCircle2 } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { MobileShell } from "@/components/MobileShell";
 import { formatCount, type Duel } from "@/lib/mock-data";
-import { actions, useStore } from "@/lib/store";
+import { useStore, fetchBackendFeed, applyBackendFeed } from "@/lib/store";
+import { fetchMyDuelVotes, voteDuel } from "@/lib/social";
+import { useSupabaseUser } from "@/hooks/use-supabase-user";
 
 export const Route = createFileRoute("/duels")({
   head: () => ({
@@ -15,8 +19,43 @@ export const Route = createFileRoute("/duels")({
 });
 
 function DuelsPage() {
+  const queryClient = useQueryClient();
+  const { user: authUser } = useSupabaseUser();
+
+  // Hydrate duels list from backend and keep cached counts fresh.
+  useQuery({
+    queryKey: ["duels", "list"],
+    queryFn: async () => {
+      const data = await fetchBackendFeed();
+      applyBackendFeed(data);
+      return data;
+    },
+    staleTime: 30_000,
+  });
+
   const userDuels = useStore((s) => s.userDuels);
   const allDuels = userDuels;
+
+  const votesQ = useQuery({
+    queryKey: ["duels", "myVotes", authUser?.id, allDuels.map((d) => d.id).join(",")],
+    queryFn: () => fetchMyDuelVotes(allDuels.map((d) => d.id)),
+    enabled: !!authUser && allDuels.length > 0,
+    staleTime: 60_000,
+  });
+
+  const voteMut = useMutation({
+    mutationFn: ({ duelId, side, current }: { duelId: string; side: "a" | "b"; current: "a" | "b" | null }) =>
+      voteDuel(duelId, side, current),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["duels"] });
+    },
+    onError: (err) => {
+      const msg = (err as Error).message;
+      if (msg === "AUTH_REQUIRED") toast.error("Sign in to vote");
+      else toast.error(msg || "Could not vote");
+    },
+  });
+
   return (
     <MobileShell>
       <div className="space-y-8 animate-snap-in">
@@ -33,7 +72,12 @@ function DuelsPage() {
         ) : (
         <div className="space-y-8">
           {allDuels.map((d) => (
-            <DuelCard key={d.id} duel={d} />
+            <DuelCard
+              key={d.id}
+              duel={d}
+              myVote={votesQ.data?.[d.id] ?? null}
+              onVote={(side, current) => voteMut.mutate({ duelId: d.id, side, current })}
+            />
           ))}
         </div>
         )}
@@ -42,9 +86,17 @@ function DuelsPage() {
   );
 }
 
-function DuelCard({ duel }: { duel: Duel }) {
-  const vote = useStore((s) => s.votes[duel.id] ?? null);
-  const counts = useStore((s) => s.voteCounts[duel.id] ?? { a: duel.a.votes, b: duel.b.votes });
+function DuelCard({
+  duel,
+  myVote,
+  onVote,
+}: {
+  duel: Duel;
+  myVote: "a" | "b" | null;
+  onVote: (side: "a" | "b", current: "a" | "b" | null) => void;
+}) {
+  const vote = myVote;
+  const counts = { a: duel.a.votes, b: duel.b.votes };
   const aVotes = counts.a;
   const bVotes = counts.b;
   const total = aVotes + bVotes;
@@ -68,7 +120,7 @@ function DuelCard({ duel }: { duel: Duel }) {
           pct={aPct}
           selected={vote === "a"}
           voted={vote !== null}
-          onClick={() => actions.vote(duel.id, "a")}
+          onClick={() => onVote("a", vote)}
         />
         <DuelSide
           poster={duel.b.poster}
@@ -77,7 +129,7 @@ function DuelCard({ duel }: { duel: Duel }) {
           pct={bPct}
           selected={vote === "b"}
           voted={vote !== null}
-          onClick={() => actions.vote(duel.id, "b")}
+          onClick={() => onVote("b", vote)}
         />
       </div>
 
