@@ -1,7 +1,7 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
 import { Lock, Flame, Award, Pencil, X, Check, Camera, Plus, Trash2, Download, LogOut, Eye, EyeOff, MoreVertical, Loader2, Video as VideoIcon } from "lucide-react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { MobileShell } from "@/components/MobileShell";
 import { BADGES, formatCount, ARTS, LEVELS, CONTENT_PREFS, BELT_SYSTEMS, hasBelts, type Art } from "@/lib/mock-data";
 import { auth, useUser } from "@/lib/auth";
@@ -45,7 +45,7 @@ function ProfilePage() {
   const [open, setOpen] = useState(false);
   const sessions = useStore((s) => s.sessions);
   const userPosts = useStore((s) => s.userPosts);
-  const queryClient2 = useQueryClient();
+  const queryClient2 = queryClient;
 
   const myVideosQ = useQuery({
     queryKey: ["profile", "myVideos", authUser?.id],
