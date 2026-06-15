@@ -320,7 +320,7 @@ export type Database = {
     }
     Functions: {
       get_feed: {
-        Args: { p_cursor: string; p_limit?: number; p_user_id: string }
+        Args: { p_cursor: string; p_limit?: number }
         Returns: {
           art: string
           caption: string
