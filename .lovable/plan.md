@@ -1,102 +1,72 @@
+
 ## Resumen
 
-Implementar de una vez: feed vertical tipo TikTok con paginación por cursor y autoplay, sistema real de likes / comentarios (con 1 nivel de respuestas) / follows, algoritmo de recomendación por afinidad, rediseño de la pantalla de subir video, y gestión de tus videos desde el perfil (borrar o marcar como privado, donde "privado" = solo tú lo ves).
+Añadir un catálogo curado de técnicas de BJJ organizado por categorías (Takedowns, Pases de guardia, Finalizaciones, Sweeps, Escapes, Guardias específicas, Wrestling/scrambles). En el buscador aparece una pestaña "Techniques" que navega Categoría → Técnica. Al abrir una técnica se listan todos los vídeos etiquetados con ella. Al subir un vídeo se pueden seleccionar 1–3 técnicas.
 
-## 1. Base de datos (1 sola migración)
+## 1. Base de datos (1 migración)
 
-Tablas nuevas en `public` (todas con RLS + GRANTs):
+Estructura preparada para más artes en el futuro, pero seed solo BJJ.
 
-- `post_likes (post_id, user_id, created_at)` — PK compuesta. Trigger que mantiene `posts.likes` y, en INSERT, suma 1 al `user_art_affinity` del usuario para `posts.art`.
-- `post_comments (id, post_id, user_id, parent_id, text, created_at)` — `parent_id` permite 1 nivel de respuestas. Trigger mantiene `posts.comments` (cuenta total).
-- `comment_likes (comment_id, user_id, created_at)`.
-- `follows (follower_id, following_id, created_at)` — PK compuesta, CHECK distinto.
-- `user_art_affinity (user_id, art, score)` — PK (user_id, art). Alimenta el algoritmo.
-- `duel_votes (duel_id, user_id, side)` — para que los votos también sean reales.
+- `technique_categories (id, art text, slug text, name text, description text, sort_order int)` — PK id, UNIQUE (art, slug). Seed BJJ: `takedowns`, `guard-passes`, `submissions`, `sweeps`, `escapes`, `guards`, `scrambles`.
+- `techniques (id, category_id fk, slug, name, aka text[], from_position text, description text, sort_order int)` — UNIQUE (category_id, slug). `from_position` para "finalizaciones desde X" (mount, back, side control, guard, half guard, etc.).
+- `post_techniques (post_id fk posts, technique_id fk techniques, PRIMARY KEY (post_id, technique_id))` — join.
 
-Cambios en tablas existentes:
+RLS + GRANTs:
+- `technique_categories`, `techniques`: lectura pública (`TO anon, authenticated`), sin escritura desde app.
+- `post_techniques`: lectura pública; insert/delete solo si `auth.uid()` es dueño del post referenciado (subquery a `posts.user_id`).
 
-- `posts.visibility text not null default 'public'` con CHECK in ('public','private').
-- `posts.author_id uuid` (alias seguro de `user_id`, ya existe) — no, reutilizamos `user_id`.
+Seed BJJ curado en la misma migración (~80–120 técnicas). Ejemplos:
+- Takedowns: Double leg, Single leg, Ankle pick, Foot sweep (Osoto/Ouchi), Seoi nagi, Kouchi, Pull guard.
+- Guard passes: Toreando, Knee cut, Over-under, Leg drag, Stack pass, X-pass, Long step, Smash pass.
+- Submissions (agrupadas por `from_position`): Kimura from side/guard/north-south, Armbar from mount/guard/back, RNC from back, Bow & arrow, Triangle from guard, Omoplata, Loop choke, Ezequiel from mount, Americana from side/mount, Heel hook (inside/outside), Kneebar, Straight ankle lock, Toe hold, D'arce, Anaconda, Guillotine, Baseball bat choke, Cross collar from mount/guard.
+- Sweeps: Scissor, Flower, Hip bump, Butterfly, X-guard, Deep half, Tripod, Balloon, Lumberjack.
+- Escapes: Mount escape (upa/elbow), Side control escape, Back escape, Guard recovery.
+- Guardias específicas (posición base): Closed, Open, Half, Butterfly, De la Riva, Reverse DLR, Spider, Lasso, X, Single-leg X, 50/50, Deep half, K-guard, Z-guard.
+- Scrambles: Granby roll, Sit-out, Wrestle-up, Peek-out.
 
-RLS clave:
+## 2. Subida de vídeo — selector de técnicas
 
-- `posts SELECT`: público sólo si `visibility = 'public'` o `user_id = auth.uid()`.
-- `post_likes`, `comment_likes`, `follows`, `duel_votes`: lectura pública; insert/delete sólo el dueño (`auth.uid() = user_id` / `follower_id`).
-- `post_comments`: lectura pública; insert autenticado con `auth.uid() = user_id`; delete sólo autor del comentario o autor del post.
+En `src/routes/_authenticated/create.tsx`:
+- Nuevo campo debajo de la descripción: **Techniques (1–3)**.
+- Combobox con búsqueda (shadcn `Command` en `Popover`) que consulta `techniques` con un JOIN a `technique_categories` filtrando por `art = 'bjj'`. Muestra `name` + badge de categoría + `from_position` cuando aplica.
+- Chips seleccionados debajo con botón de quitar. Límite 3.
+- Al publicar, tras insertar en `posts`, insertar filas en `post_techniques`.
 
-Función RPC `get_feed(p_user_id uuid, p_cursor timestamptz, p_limit int)`:
+## 3. Buscador — pestaña Techniques
 
-- Devuelve posts visibles ordenados por un score = `0.5 * affinity(art) + 0.3 * follows_author + recency_decay`. Excluye los del propio usuario sólo si está autenticado y hay suficientes (fallback a cronológico si no).
-- Paginación con cursor por `created_at` para mantener orden estable.
+En `src/routes/search.tsx`:
+- Añadir pestañas en la cabecera: **Videos** (comportamiento actual) | **Techniques**.
+- Vista Techniques (por defecto muestra categorías):
+  - Grid de tarjetas: una por categoría con nombre, descripción corta y contador de técnicas.
+  - Buscador que filtra técnicas por nombre/aka a través de todas las categorías (resultados agrupados por categoría).
+- Al tocar una categoría → nueva ruta `/technique-category/$slug` que lista las técnicas (agrupadas por `from_position` cuando exista, ej. Submissions from Mount / Back / Guard…).
+- Al tocar una técnica → nueva ruta `/technique/$slug` que muestra:
+  - Header con nombre, categoría, aka, posición de origen, descripción.
+  - Grid tipo TikTok de miniaturas: todos los `posts` públicos vinculados a esa técnica vía `post_techniques`, ordenados por más recientes/más likes. Tocar una miniatura abre el post (por ahora navega al feed con `?post=id`, ampliable después).
 
-## 2. Feed tipo TikTok con scroll infinito
+## 4. i18n
 
-Reescritura de `src/routes/index.tsx`:
-
-- Contenedor `h-[100dvh] overflow-y-scroll snap-y snap-mandatory`.
-- Cada post: `snap-start h-[100dvh]` con `<video playsInline loop muted={!active}>` que se reproduce sólo cuando está en viewport (IntersectionObserver, threshold 0.7).
-- Paginación con `useInfiniteQuery` (TanStack Query) llamando a un server fn `getFeedPage({ cursor, limit: 6 })` que invoca el RPC `get_feed`. Trigger del siguiente fetch cuando el usuario está a 2 posts del final.
-- Overlay derecho con acciones (like, comentar, guardar, compartir) y overlay inferior con autor + caption + tags, estilo TikTok.
-- Botón "Sign in" inline cuando un usuario anónimo intenta interactuar.
-
-## 3. Likes, comentarios, follows reales
-
-- `src/lib/social.functions.ts` con server fns autenticadas: `toggleLike`, `toggleSave` (queda local), `addComment`, `deleteComment`, `toggleCommentLike`, `toggleFollow`, `voteDuel`.
-- `src/lib/store.ts`: dejar de ser fuente de verdad para likes/comments/follows; pasar a wrappers optimistic-update sobre TanStack Query (`useMutation` + `invalidateQueries`).
-- Hoja de comentarios (`Sheet` de shadcn) con lista paginada, input para comentar, botón responder que abre input pre-rellenado con `@handle`, y mostrar respuestas anidadas 1 nivel.
-- Botón "Follow" en el overlay del feed y en el perfil de otros; estado real desde `follows`.
-
-## 4. Algoritmo (simple por afinidad)
-
-- Trigger en `post_likes` incrementa `user_art_affinity.score` (+1 like, -1 unlike, mínimo 0).
-- `get_feed` calcula score como combinación lineal y ordena DESC; cursor por `created_at` para paginación estable cuando los scores empatan.
-- Fallback determinista si el usuario es anónimo: orden cronológico.
-
-## 5. Pantalla de subir video (rediseño tipo TikTok)
-
-Reescritura de `src/routes/_authenticated/create.tsx`:
-
-```text
-[ Preview pequeño 9:16   ]  Descripción (textarea)
-[ con play/replay        ]  Hashtags (chips)
-[ aspect-[9/16] w-32     ]  Arte / Nivel (selects)
-                            Visibilidad: Público / Privado
-                            ---------------------------------
-                            [ Borrador ]  [ Publicar ]
-```
-
-- Preview limitado a `w-32 sm:w-40 aspect-[9/16]` en lugar de ocupar toda la pantalla.
-- Inputs alineados a la derecha en desktop, debajo en móvil.
-- Selector de visibilidad (Público / Privado) que se guarda en `posts.visibility`.
-- Barra de progreso de subida ya existente reutilizada.
-
-## 6. Gestión desde el perfil
-
-En `src/routes/_authenticated/profile.tsx`:
-
-- En cada video del grid: menú `...` con "Hacer privado / Hacer público" y "Borrar" (con confirmación).
-- "Borrar" elimina la fila de `posts` y los objetos de Storage (video + poster).
-- Badge "Privado" sobre miniaturas no públicas.
+Añadir claves EN/ES para: `search.tab.videos`, `search.tab.techniques`, `techniques.categories.*` (nombres de las 7 categorías), `techniques.from.*` (mount, back, side, guard, half_guard, standing…), `create.techniques.label`, `create.techniques.placeholder`, `create.techniques.limit`.
 
 ## Detalles técnicos
 
-- Server fns nuevas en `src/lib/social.functions.ts` y `src/lib/feed.functions.ts`, todas con `requireSupabaseAuth` salvo `getFeedPage` que acepta anónimo (pasa `null` como user_id al RPC).
-- Mantener `attachSupabaseAuth` ya registrado en `src/start.ts`.
-- IntersectionObserver con `rootMargin: "-10% 0px"` para activar el video correcto.
-- `useInfiniteQuery` con `getNextPageParam` devolviendo el `created_at` del último post.
-- Tipos generados de Supabase se regeneran tras aprobar la migración; el código que los consume se escribe después.
+- Rutas nuevas: `src/routes/technique-category.$slug.tsx`, `src/routes/technique.$slug.tsx`. Ambas públicas (SSR) con `head()` propio y loader que usa `context.queryClient.ensureQueryData` + `useSuspenseQuery`.
+- Fetchers en `src/lib/techniques.ts` (browser client, todo lectura pública anon):
+  - `fetchCategories(art)`, `fetchTechniquesByCategory(slug)`, `fetchTechniqueBySlug(slug)`, `fetchPostsForTechnique(techniqueId, cursor, limit)`, `searchTechniques(query, art)`.
+- Mutación al crear post: `insertPostTechniques(postId, techniqueIds)` en `src/lib/social.ts`.
+- El feed principal (`get_feed`) no cambia. La afinidad por arte sigue funcionando; en una fase futura se podría refinar por técnica si quieres.
 
 ## Orden de ejecución
 
-1. Migración (esperar aprobación del usuario).
-2. Server fns de feed + social.
-3. Refactor del feed (`index.tsx`) con scroll infinito y autoplay.
-4. Sheet de comentarios + botón follow real.
-5. Rediseño de `create.tsx` + campo visibility.
-6. Acciones de borrar / privado en `profile.tsx`.
+1. Migración con tablas + seed (esperar aprobación).
+2. `techniques.ts` fetchers + tipos.
+3. Selector de técnicas en `create.tsx` + insert de `post_techniques`.
+4. Pestañas + vista Techniques en `search.tsx`.
+5. Rutas `technique-category.$slug.tsx` y `technique.$slug.tsx`.
+6. Claves i18n.
 
-## Fuera de alcance (para confirmar después si lo quieres)
+## Fuera de alcance
 
-- Notificaciones de nuevos seguidores / likes / comentarios.
-- DMs.
-- Subir más de un archivo a la vez / edición tras publicar.
+- Editar técnicas de un post ya publicado (se puede añadir después desde el perfil).
+- Sugerencias de usuarios / moderación.
+- Otras artes (Kickboxing, Judo…): la estructura ya lo permite, pero el seed y la UI solo cubren BJJ ahora.
