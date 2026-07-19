@@ -39,6 +39,8 @@ import { ARTS, LEVELS, type Art } from "@/lib/mock-data";
 import { actions as storeActions } from "@/lib/store";
 import { useUser } from "@/lib/auth";
 import { uploadMedia, type UploadResult } from "@/lib/media-upload";
+import { useQuery } from "@tanstack/react-query";
+import { fetchAllTechniques, linkPostTechniques } from "@/lib/techniques";
 import {
   processVideo,
   ALLOWED_VIDEO_MIME,
@@ -332,8 +334,15 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [visibility, setVisibility] = useState<"public" | "private">("public");
+  const [selectedTechniqueIds, setSelectedTechniqueIds] = useState<string[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const techQuery = useQuery({
+    queryKey: ["all-techniques", "bjj"],
+    queryFn: () => fetchAllTechniques("bjj"),
+    enabled: art === "BJJ",
+  });
+
 
   const videoFileRef = useRef<HTMLInputElement>(null);
   const videoElRef = useRef<HTMLVideoElement>(null);
@@ -492,7 +501,7 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
     }
     setPublishing(true);
     try {
-      await storeActions.addPost({
+      const created = await storeActions.addPost({
         handle: user?.username ? `@${user.username}` : "@you",
         caption: caption.trim(),
         video: videoUpload.url,
@@ -504,6 +513,13 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
         visibility,
         tags: tags.length ? tags : undefined,
       });
+      if (art === "BJJ" && selectedTechniqueIds.length) {
+        try {
+          await linkPostTechniques(created.id, selectedTechniqueIds);
+        } catch (e) {
+          toast.error(`Video published but techniques failed: ${(e as Error).message}`);
+        }
+      }
       toast.success("Video published to your feed");
       onClose();
     } catch (e) {
