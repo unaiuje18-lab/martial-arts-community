@@ -16,6 +16,7 @@ import { Route as DuelsRouteImport } from './routes/duels'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as TechniqueCategorySlugRouteImport } from './routes/technique-category.$slug'
 import { Route as AuthenticatedTrackerRouteImport } from './routes/_authenticated/tracker'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedCreateRouteImport } from './routes/_authenticated/create'
@@ -54,6 +55,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TechniqueCategorySlugRoute = TechniqueCategorySlugRouteImport.update({
+  id: '/technique-category/$slug',
+  path: '/technique-category/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedTrackerRoute = AuthenticatedTrackerRouteImport.update({
   id: '/tracker',
   path: '/tracker',
@@ -80,6 +86,7 @@ export interface FileRoutesByFullPath {
   '/create': typeof AuthenticatedCreateRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/tracker': typeof AuthenticatedTrackerRoute
+  '/technique-category/$slug': typeof TechniqueCategorySlugRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -91,6 +98,7 @@ export interface FileRoutesByTo {
   '/create': typeof AuthenticatedCreateRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/tracker': typeof AuthenticatedTrackerRoute
+  '/technique-category/$slug': typeof TechniqueCategorySlugRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -104,6 +112,7 @@ export interface FileRoutesById {
   '/_authenticated/create': typeof AuthenticatedCreateRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_authenticated/tracker': typeof AuthenticatedTrackerRoute
+  '/technique-category/$slug': typeof TechniqueCategorySlugRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -117,6 +126,7 @@ export interface FileRouteTypes {
     | '/create'
     | '/profile'
     | '/tracker'
+    | '/technique-category/$slug'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -128,6 +138,7 @@ export interface FileRouteTypes {
     | '/create'
     | '/profile'
     | '/tracker'
+    | '/technique-category/$slug'
   id:
     | '__root__'
     | '/'
@@ -140,6 +151,7 @@ export interface FileRouteTypes {
     | '/_authenticated/create'
     | '/_authenticated/profile'
     | '/_authenticated/tracker'
+    | '/technique-category/$slug'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -150,6 +162,7 @@ export interface RootRouteChildren {
   OnboardingRoute: typeof OnboardingRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SearchRoute: typeof SearchRoute
+  TechniqueCategorySlugRoute: typeof TechniqueCategorySlugRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -203,6 +216,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/technique-category/$slug': {
+      id: '/technique-category/$slug'
+      path: '/technique-category/$slug'
+      fullPath: '/technique-category/$slug'
+      preLoaderRoute: typeof TechniqueCategorySlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/tracker': {
       id: '/_authenticated/tracker'
       path: '/tracker'
@@ -250,6 +270,7 @@ const rootRouteChildren: RootRouteChildren = {
   OnboardingRoute: OnboardingRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SearchRoute: SearchRoute,
+  TechniqueCategorySlugRoute: TechniqueCategorySlugRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
