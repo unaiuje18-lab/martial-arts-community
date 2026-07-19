@@ -206,6 +206,39 @@ export type Database = {
           },
         ]
       }
+      post_techniques: {
+        Row: {
+          created_at: string
+          post_id: string
+          technique_id: string
+        }
+        Insert: {
+          created_at?: string
+          post_id: string
+          technique_id: string
+        }
+        Update: {
+          created_at?: string
+          post_id?: string
+          technique_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_techniques_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "post_techniques_technique_id_fkey"
+            columns: ["technique_id"]
+            isOneToOne: false
+            referencedRelation: "techniques"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       posts: {
         Row: {
           art: string
@@ -292,6 +325,80 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      technique_categories: {
+        Row: {
+          art: string
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          slug: string
+          sort_order: number
+        }
+        Insert: {
+          art: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          slug: string
+          sort_order?: number
+        }
+        Update: {
+          art?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          slug?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
+      techniques: {
+        Row: {
+          aka: string[]
+          category_id: string
+          created_at: string
+          description: string | null
+          from_position: string | null
+          id: string
+          name: string
+          slug: string
+          sort_order: number
+        }
+        Insert: {
+          aka?: string[]
+          category_id: string
+          created_at?: string
+          description?: string | null
+          from_position?: string | null
+          id?: string
+          name: string
+          slug: string
+          sort_order?: number
+        }
+        Update: {
+          aka?: string[]
+          category_id?: string
+          created_at?: string
+          description?: string | null
+          from_position?: string | null
+          id?: string
+          name?: string
+          slug?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "techniques_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "technique_categories"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_art_affinity: {
         Row: {

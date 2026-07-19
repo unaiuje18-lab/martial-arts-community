@@ -39,6 +39,8 @@ import { ARTS, LEVELS, type Art } from "@/lib/mock-data";
 import { actions as storeActions } from "@/lib/store";
 import { useUser } from "@/lib/auth";
 import { uploadMedia, type UploadResult } from "@/lib/media-upload";
+import { useQuery } from "@tanstack/react-query";
+import { fetchAllTechniques, linkPostTechniques } from "@/lib/techniques";
 import {
   processVideo,
   ALLOWED_VIDEO_MIME,
@@ -332,8 +334,15 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [visibility, setVisibility] = useState<"public" | "private">("public");
+  const [selectedTechniqueIds, setSelectedTechniqueIds] = useState<string[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const techQuery = useQuery({
+    queryKey: ["all-techniques", "bjj"],
+    queryFn: () => fetchAllTechniques("bjj"),
+    enabled: art === "BJJ",
+  });
+
 
   const videoFileRef = useRef<HTMLInputElement>(null);
   const videoElRef = useRef<HTMLVideoElement>(null);
@@ -492,7 +501,7 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
     }
     setPublishing(true);
     try {
-      await storeActions.addPost({
+      const created = await storeActions.addPost({
         handle: user?.username ? `@${user.username}` : "@you",
         caption: caption.trim(),
         video: videoUpload.url,
@@ -504,6 +513,13 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
         visibility,
         tags: tags.length ? tags : undefined,
       });
+      if (art === "BJJ" && selectedTechniqueIds.length) {
+        try {
+          await linkPostTechniques(created.id, selectedTechniqueIds);
+        } catch (e) {
+          toast.error(`Video published but techniques failed: ${(e as Error).message}`);
+        }
+      }
       toast.success("Video published to your feed");
       onClose();
     } catch (e) {
@@ -732,6 +748,64 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
         <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">Level</span>
         <ChipGrid options={LEVELS} value={level} onChange={setLevel} />
       </div>
+
+      {art === "BJJ" && (
+        <div className="space-y-2">
+          <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
+            BJJ Techniques (optional, up to 3)
+          </span>
+          {techQuery.isLoading ? (
+            <p className="text-xs text-muted-foreground">Loading techniques…</p>
+          ) : (
+            <div className="max-h-48 overflow-y-auto rounded-xl border border-border bg-card/50 p-2 space-y-1">
+              {Object.entries(
+                (techQuery.data ?? []).reduce<Record<string, NonNullable<typeof techQuery.data>>>(
+                  (acc, t) => {
+                    const key = t.category.name;
+                    (acc[key] ||= []).push(t);
+                    return acc;
+                  },
+                  {},
+                ),
+              ).map(([cat, list]) => (
+                <div key={cat} className="space-y-1">
+                  <p className="text-[9px] font-mono text-accent uppercase tracking-wider px-1 pt-1">
+                    {cat}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {list.map((t) => {
+                      const sel = selectedTechniqueIds.includes(t.id);
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() =>
+                            setSelectedTechniqueIds((cur) =>
+                              sel
+                                ? cur.filter((x) => x !== t.id)
+                                : cur.length >= 3
+                                  ? cur
+                                  : [...cur, t.id],
+                            )
+                          }
+                          className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border ${
+                            sel
+                              ? "bg-accent text-accent-foreground border-accent"
+                              : "bg-secondary border-border text-muted-foreground"
+                          }`}
+                        >
+                          {t.name}
+                          {t.from_position ? ` · ${t.from_position}` : ""}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="space-y-2">
         <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">Visibility</span>
