@@ -759,18 +759,21 @@ function UploadVideoForm({ onClose }: { onClose: () => void }) {
           ) : (
             <div className="max-h-48 overflow-y-auto rounded-xl border border-border bg-card/50 p-2 space-y-1">
               {Object.entries(
-                (techQuery.data ?? []).reduce<Record<string, typeof techQuery.data>>((acc, t) => {
-                  const key = t.category.name;
-                  (acc[key] ||= [] as typeof techQuery.data).push(t);
-                  return acc;
-                }, {}),
+                (techQuery.data ?? []).reduce<Record<string, NonNullable<typeof techQuery.data>>>(
+                  (acc, t) => {
+                    const key = t.category.name;
+                    (acc[key] ||= []).push(t);
+                    return acc;
+                  },
+                  {},
+                ),
               ).map(([cat, list]) => (
                 <div key={cat} className="space-y-1">
                   <p className="text-[9px] font-mono text-accent uppercase tracking-wider px-1 pt-1">
                     {cat}
                   </p>
                   <div className="flex flex-wrap gap-1.5">
-                    {list!.map((t) => {
+                    {list.map((t) => {
                       const sel = selectedTechniqueIds.includes(t.id);
                       return (
                         <button
