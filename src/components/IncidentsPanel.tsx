@@ -8,11 +8,15 @@ import {
 } from "@/lib/incident";
 import { getMetrics } from "@/lib/metrics";
 
+// Stable empty snapshot for SSR — returning a fresh [] here triggers
+// React's "getServerSnapshot should be cached" warning and an infinite loop.
+const EMPTY_INCIDENTS: IncidentRecord[] = [];
+
 function useIncidents(): IncidentRecord[] {
   return useSyncExternalStore(
     (l) => subscribeIncidents(l),
     () => getRecentIncidents(),
-    () => [],
+    () => EMPTY_INCIDENTS,
   );
 }
 
