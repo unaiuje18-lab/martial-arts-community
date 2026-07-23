@@ -80,7 +80,21 @@ function seed(): State {
   };
 }
 
-let state: State = load();
+// Start from `seed()` on both server and client so the SSR HTML and the
+// first client render agree. `hydrateFromStorage()` is called by the app
+// shell after mount to swap in the persisted state without hydration mismatch.
+let state: State = seed();
+let storageHydrated = false;
+
+export function hydrateFromStorage() {
+  if (storageHydrated || typeof window === "undefined") return;
+  storageHydrated = true;
+  const loaded = load();
+  if (loaded !== state) {
+    state = loaded;
+    listeners.forEach((l) => l());
+  }
+}
 const listeners = new Set<() => void>();
 
 // On boot, hydrate user posts/duels from backend so publications survive reloads.
