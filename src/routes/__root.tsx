@@ -18,6 +18,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { auth as localAuth, useUser } from "@/lib/auth";
 import { I18nProvider } from "@/lib/i18n";
 import { ThemeProvider } from "@/lib/theme";
+import { hydrateFromStorage } from "@/lib/store";
 import { useRouterState } from "@tanstack/react-router";
 
 function NotFoundComponent() {
@@ -149,6 +150,7 @@ function RootComponent() {
   useEffect(() => {
     installGlobalErrorHandlers();
     installPerformanceObservers();
+    hydrateFromStorage();
   }, []);
 
   // Single auth-state subscriber: keeps local onboarding storage in sync,

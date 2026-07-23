@@ -80,15 +80,27 @@ function seed(): State {
   };
 }
 
-let state: State = load();
-const listeners = new Set<() => void>();
+// Start from `seed()` on both server and client so the SSR HTML and the
+// first client render agree. `hydrateFromStorage()` is called by the app
+// shell after mount to swap in the persisted state without hydration mismatch.
+let state: State = seed();
+let storageHydrated = false;
 
-// On boot, hydrate user posts/duels from backend so publications survive reloads.
-// Errors are swallowed here; routes can opt into a Query-driven hydration with
-// visible loading/error states via `fetchBackendFeed` below.
-if (typeof window !== "undefined") {
+export function hydrateFromStorage() {
+  if (storageHydrated || typeof window === "undefined") return;
+  storageHydrated = true;
+  const loaded = load();
+  if (loaded !== state) {
+    state = loaded;
+    listeners.forEach((l) => l());
+  }
+  // Then refresh from backend in the background.
   void hydrateFromBackend().catch(() => {});
 }
+const listeners = new Set<() => void>();
+
+// Backend hydration is triggered from the app shell after mount to avoid
+// SSR/CSR mismatches; see hydrateFromStorage below.
 
 export interface BackendFeed {
   posts: FeedPost[];
@@ -156,7 +168,17 @@ function load(): State {
     const raw = localStorage.getItem(KEY);
     if (!raw) return seed();
     const parsed = JSON.parse(raw);
-    return { ...seed(), ...parsed };
+    // Backend-owned collections are always re-fetched; loading them from
+    // localStorage causes SSR/CSR hydration mismatches on public routes.
+    return {
+      ...seed(),
+      ...parsed,
+      userPosts: [],
+      userDuels: [],
+      likeCounts: {},
+      commentCounts: {},
+      voteCounts: {},
+    };
   } catch {
     return seed();
   }
