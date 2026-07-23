@@ -97,12 +97,8 @@ export function hydrateFromStorage() {
 }
 const listeners = new Set<() => void>();
 
-// On boot, hydrate user posts/duels from backend so publications survive reloads.
-// Errors are swallowed here; routes can opt into a Query-driven hydration with
-// visible loading/error states via `fetchBackendFeed` below.
-if (typeof window !== "undefined") {
-  void hydrateFromBackend().catch(() => {});
-}
+// Backend hydration is triggered from the app shell after mount to avoid
+// SSR/CSR mismatches; see hydrateFromStorage below.
 
 export interface BackendFeed {
   posts: FeedPost[];
