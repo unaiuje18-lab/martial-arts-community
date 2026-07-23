@@ -94,6 +94,8 @@ export function hydrateFromStorage() {
     state = loaded;
     listeners.forEach((l) => l());
   }
+  // Then refresh from backend in the background.
+  void hydrateFromBackend().catch(() => {});
 }
 const listeners = new Set<() => void>();
 
