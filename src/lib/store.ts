@@ -168,7 +168,17 @@ function load(): State {
     const raw = localStorage.getItem(KEY);
     if (!raw) return seed();
     const parsed = JSON.parse(raw);
-    return { ...seed(), ...parsed };
+    // Backend-owned collections are always re-fetched; loading them from
+    // localStorage causes SSR/CSR hydration mismatches on public routes.
+    return {
+      ...seed(),
+      ...parsed,
+      userPosts: [],
+      userDuels: [],
+      likeCounts: {},
+      commentCounts: {},
+      voteCounts: {},
+    };
   } catch {
     return seed();
   }
